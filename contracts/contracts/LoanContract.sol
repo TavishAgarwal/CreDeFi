@@ -49,8 +49,7 @@ contract LoanContract is ReentrancyGuard, Ownable {
     ISoulboundReputationNFT public reputationNFT;
 
     // ── Configuration ────────────────────────────────────────────
-    uint256 public minTrustScore;                // e.g. 300
-    uint256 public collateralRatioBps;           // e.g. 15000 = 150 %
+    uint256 public minTrustScore;                // e.g. 450
     uint256 public constant BPS = 10_000;
     uint256 public constant SECONDS_PER_YEAR = 365 days;
     uint256 public totalPoolSupply;              // total lendable assets
@@ -101,14 +100,12 @@ contract LoanContract is ReentrancyGuard, Ownable {
         address _rateModel,
         address _reputationNFT,
         uint256 _minTrustScore,
-        uint256 _collateralRatioBps,
         uint256 _maxActiveLoansPerUser
     ) Ownable(msg.sender) {
         vault = ICollateralVault(_vault);
         rateModel = IInterestRateModel(_rateModel);
         reputationNFT = ISoulboundReputationNFT(_reputationNFT);
         minTrustScore = _minTrustScore;
-        collateralRatioBps = _collateralRatioBps;
         maxActiveLoansPerUser = _maxActiveLoansPerUser;
         nextLoanId = 1;
     }
@@ -135,7 +132,8 @@ contract LoanContract is ReentrancyGuard, Ownable {
         require(trustScore >= minTrustScore, "Loan: trust score too low");
         require(activeLoanCount[msg.sender] < maxActiveLoansPerUser, "Loan: too many active loans");
 
-        _requireSufficientCollateral(borrowToken, collateralToken, principal, collateralAmount);
+        uint256 ratioBps = getCollateralRatioBps(trustScore);
+        _requireSufficientCollateral(borrowToken, collateralToken, principal, collateralAmount, ratioBps);
 
         vault.lock(msg.sender, collateralToken, collateralAmount);
 
@@ -334,17 +332,35 @@ contract LoanContract is ReentrancyGuard, Ownable {
         minTrustScore = _score;
     }
 
-    function setCollateralRatio(uint256 _ratioBps) external onlyOwner {
-        require(_ratioBps >= BPS, "ratio < 100%");
-        collateralRatioBps = _ratioBps;
-    }
-
     function setMaxActiveLoans(uint256 _max) external onlyOwner {
         maxActiveLoansPerUser = _max;
     }
 
     function setPoolSupply(uint256 _supply) external onlyOwner {
         totalPoolSupply = _supply;
+    }
+
+    // ── Dynamic collateral ratio ──────────────────────────────────
+
+    /**
+     * @notice Returns the required collateral ratio (in BPS) for a given trust score.
+     *         Reverts if the score is below the eligibility threshold (450).
+     *
+     *         Score range → Collateral
+     *         < 450       → NOT ELIGIBLE (revert)
+     *         450 – 599   → 120 % (12000 bps)
+     *         600 – 749   →  80 % ( 8000 bps)
+     *         750 – 849   →  60 % ( 6000 bps)
+     *         850 – 949   →  40 % ( 4000 bps)
+     *         950 – 1000  →  20 % ( 2000 bps)
+     */
+    function getCollateralRatioBps(uint256 trustScore) public pure returns (uint256) {
+        require(trustScore >= 450, "Loan: score not eligible");
+        if (trustScore < 600) return 12_000;
+        if (trustScore < 750) return  8_000;
+        if (trustScore < 850) return  6_000;
+        if (trustScore < 950) return  4_000;
+        return 2_000; // 950 – 1000
     }
 
     // ── Internal ─────────────────────────────────────────────────
@@ -360,12 +376,13 @@ contract LoanContract is ReentrancyGuard, Ownable {
         address borrowToken,
         address collateralToken,
         uint256 principal,
-        uint256 collateralAmount
+        uint256 collateralAmount,
+        uint256 ratioBps
     ) internal view {
         uint256 borrowValue = _tokenValue(borrowToken, principal);
         uint256 collateralValue = _tokenValue(collateralToken, collateralAmount);
 
-        uint256 requiredCollateral = (borrowValue * collateralRatioBps) / BPS;
+        uint256 requiredCollateral = (borrowValue * ratioBps) / BPS;
         require(collateralValue >= requiredCollateral, "Loan: insufficient collateral value");
     }
 

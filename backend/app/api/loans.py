@@ -8,6 +8,7 @@ from app.models.user import User
 from app.schemas.loan import (
     FundLoanResponse,
     LoanContractResponse,
+    LoanEligibilityResponse,
     LoanFundRequest,
     LoanRepayRequest,
     LoanRequestCreate,
@@ -16,7 +17,13 @@ from app.schemas.loan import (
     RepayLoanResponse,
     RepaymentResponse,
 )
-from app.services.loan_service import LoanService, LoanServiceError
+from app.services.loan_service import (
+    LoanService,
+    LoanServiceError,
+    get_collateral_ratio,
+    get_interest_rate_bps,
+    get_max_loan,
+)
 
 router = APIRouter(prefix="/loans", tags=["loans"])
 
@@ -129,3 +136,45 @@ async def loan_history(
         user_id=user.id, role=role, limit=limit, offset=offset,
     )
     return [LoanRequestDetail.model_validate(r) for r in rows]
+
+
+# ─── GET /loans/eligibility ─────────────────────────────────────────
+
+@router.get("/eligibility", response_model=LoanEligibilityResponse)
+async def loan_eligibility(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Return the caller’s dynamic collateral ratio, max borrow amount,
+    and interest rate based on their latest trust score."""
+    svc = LoanService(session)
+    trust = await svc._latest_trust_score(user.id)
+
+    if trust is None:
+        return LoanEligibilityResponse(
+            trust_score=0,
+            collateral_ratio=None,
+            max_borrow_amount=0,
+            interest_rate=0,
+            eligible=False,
+            message="No trust score found. Please compute your trust score first.",
+        )
+
+    score = trust.score
+    coll = get_collateral_ratio(score)
+    rate_bps = get_interest_rate_bps(score)
+    max_borrow = get_max_loan(score)
+    eligible = coll is not None
+
+    return LoanEligibilityResponse(
+        trust_score=score,
+        collateral_ratio=coll,
+        max_borrow_amount=max_borrow,
+        interest_rate=(rate_bps / 10_000) if rate_bps else 0,
+        eligible=eligible,
+        message=(
+            f"Your trust score of {score:.0f} unlocks a {coll * 100:.0f}% collateral requirement."
+            if eligible
+            else "Trust score below 450 — not eligible for loans."
+        ),
+    )

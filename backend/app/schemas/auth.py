@@ -14,6 +14,7 @@ class LoginRequest(BaseModel):
 class WalletLoginRequest(BaseModel):
     wallet_address: str = Field(min_length=32, max_length=44)
     signature: str
+    message: str = Field(min_length=1)
 
 
 class TokenResponse(BaseModel):

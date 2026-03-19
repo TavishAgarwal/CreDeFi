@@ -16,12 +16,19 @@ interface WalletState {
   signer: JsonRpcSigner | null;
   chainId: number | null;
   error: string | null;
+  demoMode: boolean;
 
   /** Prompt MetaMask connection and store provider/signer. */
   connect: () => Promise<void>;
 
   /** Drop wallet state (does NOT disconnect MetaMask itself). */
   disconnect: () => void;
+
+  /** Enter demo mode with sample data. */
+  enableDemo: () => void;
+
+  /** Exit demo mode. */
+  disableDemo: () => void;
 
   /** Sign the standard CreDeFi login message. Returns { signature, message }. */
   signLoginMessage: () => Promise<{ signature: string; message: string }>;
@@ -35,6 +42,8 @@ interface WalletState {
   clearError: () => void;
 }
 
+const DEMO_ADDRESS = "0xDe0000000000000000000000000000000000dEm0";
+
 export const useWalletStore = create<WalletState>((set, get) => ({
   address: null,
   status: "disconnected",
@@ -42,6 +51,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   signer: null,
   chainId: null,
   error: null,
+  demoMode: false,
 
   connect: async () => {
     if (!isMetaMaskInstalled()) {
@@ -61,6 +71,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         provider,
         chainId: Number(network.chainId),
         status: "connected",
+        demoMode: false,
       });
     } catch (err: unknown) {
       const msg =
@@ -76,6 +87,28 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       provider: null,
       chainId: null,
       status: "disconnected",
+      error: null,
+      demoMode: false,
+    });
+  },
+
+  enableDemo: () => {
+    set({
+      demoMode: true,
+      address: DEMO_ADDRESS,
+      status: "connected",
+      error: null,
+    });
+  },
+
+  disableDemo: () => {
+    set({
+      demoMode: false,
+      address: null,
+      status: "disconnected",
+      provider: null,
+      signer: null,
+      chainId: null,
       error: null,
     });
   },

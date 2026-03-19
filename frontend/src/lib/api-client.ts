@@ -4,6 +4,7 @@ import type {
   AuthTokens,
   GraphMetrics,
   LoanContract,
+  LoanEligibility,
   LoanRequest,
   Repayment,
   SybilAnalysis,
@@ -148,6 +149,8 @@ class ApiClient {
       this.post<Repayment>("/loans/repay", data),
 
     history: () => this.get<LoanRequest[]>("/loans/history"),
+
+    eligibility: () => this.get<LoanEligibility>("/loans/eligibility"),
   };
 
   // ── Health ───────────────────────────────────────────────────

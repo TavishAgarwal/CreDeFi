@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { PageShell } from "@/components/layout/page-shell";
@@ -36,16 +36,22 @@ export default function LoanDetailPage() {
     <PageShell
       title="Loan Contract Preview"
       subtitle="Review the details of your generated smart contract before execution."
+      actions={
+        <div className="flex items-center gap-2 rounded-full border border-surface-border px-3 py-1 text-xs text-gray-400">
+          <span className="h-2 w-2 rounded-full bg-emerald-400" />
+          Network: <span className="font-semibold text-emerald-400">Mainnet</span>
+        </div>
+      }
     >
       <div className="mx-auto max-w-2xl">
-        <Card className="border-l-2 border-l-brand">
+        <Card className="border-l-2 border-l-brand" hover={false}>
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-brand">
+              <p className="text-xs font-semibold uppercase tracking-widest text-brand">
                 Contract ID
               </p>
-              <p className="mt-1 rounded bg-surface-light px-3 py-1 font-mono text-sm text-gray-300">
+              <p className="mt-1 rounded-lg bg-[#0B0F1A] px-3 py-1.5 font-mono text-sm text-gray-300">
                 0x74...f48c25
               </p>
             </div>
@@ -88,10 +94,10 @@ export default function LoanDetailPage() {
 
           {/* Contract Terms */}
           <div className="mt-8 border-t border-surface-border pt-6">
-            <h3 className="font-semibold">Contract Terms</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-400">Contract Terms</h3>
             <ul className="mt-4 space-y-3">
               {CONTRACT_TERMS.map((term) => (
-                <li key={term} className="flex items-start gap-2 text-sm text-gray-400">
+                <li key={term} className="flex items-start gap-2.5 text-sm text-gray-400">
                   <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
                   {term}
                 </li>
@@ -104,16 +110,20 @@ export default function LoanDetailPage() {
         <div className="mt-6 flex gap-4">
           <button
             onClick={() => router.back()}
-            className="flex-1 rounded-xl border border-surface-border py-3.5 text-sm font-semibold text-gray-300 transition-colors hover:bg-surface-light"
+            className="flex-1 rounded-xl border border-surface-border py-3.5 text-sm font-semibold text-gray-300 transition-all duration-200 hover:bg-surface-light hover:border-gray-600"
           >
             Cancel
           </button>
           <button
             onClick={handleFund}
             disabled={funding}
-            className="flex-1 rounded-xl bg-brand py-3.5 text-sm font-semibold text-gray-950 transition-colors hover:bg-amber-400 disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-brand py-3.5 text-sm font-semibold text-gray-950 transition-all duration-200 hover:bg-amber-400 hover:shadow-lg hover:shadow-brand/20 disabled:opacity-50"
           >
-            {funding ? "Processing..." : "Accept Contract"}
+            {funding ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
+            ) : (
+              "Accept Contract"
+            )}
           </button>
         </div>
       </div>

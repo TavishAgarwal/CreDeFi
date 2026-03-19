@@ -135,3 +135,13 @@ class RepayLoanResponse(BaseModel):
     repayment: RepaymentResponse
     loan_fully_repaid: bool
     remaining_installments: int
+
+
+class LoanEligibilityResponse(BaseModel):
+    trust_score: float
+    collateral_ratio: float | None = None   # e.g. 0.80 for 80%
+    max_borrow_amount: float
+    interest_rate: float                     # annual, e.g. 0.12 for 12%
+    eligible: bool
+    message: str | None = None
+
