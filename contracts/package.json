@@ -1,0 +1,16 @@
+{
+  "name": "credefi-contracts",
+  "version": "1.0.0",
+  "description": "CreDeFi Solidity smart contracts",
+  "type": "commonjs",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost"
+  },
+  "devDependencies": {
+    "hardhat": "^2.22.0",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.6.1"
+  }
+}
