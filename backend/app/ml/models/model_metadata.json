@@ -1,0 +1,40 @@
+{
+  "model_type": "logistic_regression",
+  "model_version": "v3-hybrid",
+  "feature_names": [
+    "loan_reliability",
+    "income",
+    "income_stability",
+    "graph_reputation",
+    "currency_risk",
+    "platform_quality",
+    "wallet_age",
+    "transaction_diversity",
+    "growth_trend",
+    "account_behavior"
+  ],
+  "feature_importance": {
+    "loan_reliability": -0.9784343559885212,
+    "income": -0.585340546816311,
+    "income_stability": -0.5071166419848028,
+    "graph_reputation": -0.33368722566156567,
+    "currency_risk": -0.2158225911547596,
+    "platform_quality": -0.5539147351915447,
+    "wallet_age": -0.46261801889259896,
+    "transaction_diversity": -0.4090743675302306,
+    "growth_trend": -0.31689439549498716,
+    "account_behavior": -0.19568926797453318
+  },
+  "metrics": {
+    "accuracy": 0.811,
+    "precision": 0.27310924369747897,
+    "recall": 0.8024691358024691,
+    "f1": 0.40752351097178685,
+    "auc_roc": 0.8808823331855614,
+    "log_loss": 0.39170002390426895,
+    "cv_auc_mean": 0.9069847128070567,
+    "cv_auc_std": 0.016140652951633083
+  },
+  "training_samples": 5000,
+  "default_rate": 0.0644
+}

@@ -86,8 +86,16 @@ class TrustScore(TimestampMixin, Base):
     social_component: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     income_component: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
 
-    model_version: Mapped[str] = mapped_column(String(50), nullable=False, default="v1")
+    model_version: Mapped[str] = mapped_column(String(50), nullable=False, default="v3-hybrid")
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ML prediction metadata
+    ml_default_probability: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    ml_confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    ml_model_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    heuristic_raw: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    ml_raw: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    feature_contributions_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="trust_scores")
 

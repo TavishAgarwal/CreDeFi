@@ -143,6 +143,56 @@ class BlockchainClient:
         logger.info("MOCK record_repayment: %s -> %s  %s %s", borrower_address, escrow_address, amount, currency)
         return _mock_receipt(borrower_address, escrow_address, amount, currency, chain)
 
+    async def emit_default_event(
+        self,
+        contract_address: str,
+        borrower_address: str,
+        principal_owed: float,
+        interest_owed: float,
+        days_overdue: int,
+        severity: str,
+        chain: str = "ethereum",
+    ) -> ChainTxReceipt:
+        logger.info(
+            "MOCK emit_default: borrower=%s principal=%.2f severity=%s on %s",
+            borrower_address, principal_owed, severity, chain,
+        )
+        return ChainTxReceipt(
+            tx_hash=_mock_hash(),
+            chain=chain,
+            from_address=contract_address,
+            to_address=borrower_address,
+            amount=principal_owed,
+            currency="USD",
+            block_number=_mock_block(),
+            confirmed_at=datetime.now(timezone.utc),
+            success=True,
+        )
+
+    async def emit_reputation_slash(
+        self,
+        user_address: str,
+        penalty_points: float,
+        new_score: float,
+        reason: str,
+        chain: str = "ethereum",
+    ) -> ChainTxReceipt:
+        logger.info(
+            "MOCK emit_reputation_slash: user=%s penalty=%.0f new_score=%.0f reason=%s",
+            user_address, penalty_points, new_score, reason,
+        )
+        return ChainTxReceipt(
+            tx_hash=_mock_hash(),
+            chain=chain,
+            from_address="0xCREDEFI_REPUTATION_NFT",
+            to_address=user_address,
+            amount=penalty_points,
+            currency="CREP",
+            block_number=_mock_block(),
+            confirmed_at=datetime.now(timezone.utc),
+            success=True,
+        )
+
     async def release_collateral(
         self,
         escrow_address: str,

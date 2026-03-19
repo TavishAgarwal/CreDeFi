@@ -260,6 +260,12 @@ class TrustScoreService:
             income_component=result.features.get("income", 0.0),
             model_version=result.model_version,
             explanation=self._build_explanation(result),
+            ml_default_probability=result.ml_component.default_probability,
+            ml_confidence=result.ml_component.confidence,
+            ml_model_type=result.ml_component.model_type,
+            heuristic_raw=result.heuristic_raw,
+            ml_raw=result.ml_raw,
+            feature_contributions_json=result.ml_component.feature_contributions,
         )
         self._s.add(record)
         await self._s.flush()
@@ -268,7 +274,11 @@ class TrustScoreService:
     @staticmethod
     def _build_explanation(r: ScoreResult) -> str:
         lines = [f"Score {r.score} ({r.risk_tier} risk) | model={r.model_version}"]
-        lines.append(f"Raw weighted: {r.raw_weighted}")
+        lines.append(f"Hybrid: {r.heuristic_raw:.4f} heuristic × 0.6 + {r.ml_raw:.4f} ML × 0.4")
+        lines.append(f"Heuristic raw weighted: {r.raw_weighted}")
+        lines.append(f"ML default prob: {r.ml_component.default_probability:.4f} "
+                     f"(confidence: {r.ml_component.confidence:.4f}, "
+                     f"model: {r.ml_component.model_type})")
         lines.append("Features: " + ", ".join(
             f"{k}={v:.3f}" for k, v in r.features.items()
         ))
@@ -286,5 +296,9 @@ class TrustScoreService:
             if p.gaming:
                 parts.append(f"gaming={p.gaming:.2f}")
             lines.append(f"Penalties ({p.total:.2f}): " + ", ".join(parts))
+        if r.ml_component.feature_contributions:
+            lines.append("ML contributions: " + ", ".join(
+                f"{k}={v:.4f}" for k, v in r.ml_component.feature_contributions.items()
+            ))
         lines.append(f"Loan limit: ${r.loan_limit:,.2f}")
         return "\n".join(lines)

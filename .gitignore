@@ -2,8 +2,18 @@ node_modules/
 __pycache__/
 *.pyc
 .next/
+# Secrets & local env (never commit real keys)
 .env
 .env.local
+.env.development
+.env.production
+.env*.local
+venv/
+.venv/
+*.pem
+*.p12
+# Optional: random local archives
+Files.zip
 *.egg-info/
 dist/
 build/

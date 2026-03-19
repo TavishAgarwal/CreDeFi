@@ -1,0 +1,249 @@
+% CreDeFi — Full project report (plain language)
+% Compile with: pdflatex CreDeFi_Project_Report.tex (twice if using cross-refs)
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black, citecolor=blue!60!black}
+
+\title{\textbf{CreDeFi}\\[0.4em]
+\large A Web Application for Reputation-Based Borrowing and Credit Insights}
+\author{Project documentation (generated from codebase)}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This report describes \textbf{CreDeFi}, a software project that helps people who earn money online show a \emph{trust profile} they can use when borrowing digital assets. The system combines a modern website, a server that stores user data and runs scoring rules, and optional programs on a public blockchain that record loans. The report explains what each part does, how they connect, and what a visitor sees when using the product---including a \emph{demo mode} that works without a real wallet. The wording avoids technical shorthand where possible so readers without a programming background can follow the main ideas.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%------------------------------------------------------------------
+\section{Why this project exists}
+Many people work remotely or get paid through apps and bank transfers. Traditional credit reports often miss this kind of history, so the same person may find it hard to get a fair loan offer. CreDeFi is built around a simple idea: \textbf{if someone can prove steady work, verified accounts, and responsible past behavior, that information can support a borrowing limit and interest terms}---similar in spirit to a credit score, but designed for digital-native workers and optional use with blockchain-based lending.
+
+The product is \textbf{not} a bank. It is a \textbf{demonstration platform} that shows how data from everyday tools (for example code hosting, payment services, and a crypto wallet) could feed into a single trust number, visual explanations, loan suggestions, and optional on-chain loan records.
+
+%------------------------------------------------------------------
+\section{What the user sees (in plain terms)}
+\subsection{Main screens}
+The public website (built with Next.js and styled with Tailwind CSS) includes:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Home page} --- introduction and entry points.
+  \item \textbf{Dashboard} --- trust score summary, charts, a \emph{score simulator} (sliders that show ``what if'' outcomes), a \emph{credit passport} card (score, risk band, wallet snippet, connected platforms) with an option to save the card as an image.
+  \item \textbf{Loan request} --- form to request a loan, with an \emph{AI-style recommendation panel} (suggested amount, interest, short explanation) before submitting.
+  \item \textbf{Trust graph} --- a visual map of sample users and links between them; some groups are highlighted when they look suspicious (for example many similar accounts acting together).
+  \item \textbf{Platforms, transactions, lender view, contract preview} --- additional flows to connect data sources, review activity, or inspect how smart contracts would behave in a test setup.
+\end{itemize}
+
+\subsection{Wallet connection and demo mode}
+For most protected pages, the site asks the user to \textbf{connect a wallet} (MetaMask is supported) so the app knows which on-chain identity to associate with the session. If someone does not want to connect a wallet, they can press \textbf{Try Demo}. In demo mode the app shows \textbf{sample data} and may add short artificial delays so the experience feels like talking to a real remote service. A small badge in the interface can indicate that demo mode is active.
+
+\subsection{Charts and explanations}
+The dashboard uses the Recharts library for bar charts and similar visuals. Users can see which factors push the score up or down and read short suggestions (for example improving income stability or connecting more verified accounts). This is meant to make the score feel understandable, not like a hidden black box.
+
+\subsection{Typical user journeys}
+\textbf{First-time visitor (demo).} Open the site $\rightarrow$ choose ``Try Demo'' on a gated page $\rightarrow$ browse the dashboard with sample numbers $\rightarrow$ move sliders in the simulator and watch the score react $\rightarrow$ open the trust graph to see highlighted clusters $\rightarrow$ visit the loan page and read the suggested terms $\rightarrow$ optionally save the credit passport image.
+
+\textbf{User with a wallet.} Connect the wallet when prompted $\rightarrow$ explore the same pages with data tied to the connected address where the backend supports it $\rightarrow$ connect GitHub or payment data if those features are enabled and the user agrees to share access.
+
+\textbf{Developer or evaluator.} Run the server and website locally $\rightarrow$ open automatic API documentation when debug mode is on $\rightarrow$ inspect database tables after migrations $\rightarrow$ run contract tests in the Hardhat environment.
+
+%------------------------------------------------------------------
+\section{Big picture: how the pieces fit together}
+CreDeFi has three main layers:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Website (frontend)} --- runs in the browser, talks to the server over standard web requests, and can talk to the user's wallet through Ethers.js.
+  \item \textbf{Server (backend)} --- a FastAPI application written in Python. It validates requests, reads and writes a PostgreSQL database, runs scoring logic, and can call external services when keys are configured.
+  \item \textbf{Smart contracts (optional blockchain layer)} --- Solidity programs compiled with Hardhat, including a loan contract, collateral handling, an interest calculation helper, and a non-transferable ``reputation'' token concept. These are typical for experiments on Ethereum-style networks; the main product can still be explored with mocked or test-network behavior.
+\end{enumerate}
+
+A shared \textbf{API client} in TypeScript lists the server's addresses and data shapes so the website stays in sync with what the server expects.
+
+\subsection{Overview of server routes (grouped)}
+Table~\ref{tab:apis} lists the main route families. Exact paths may be prefixed depending on deployment; the frontend client encodes the live paths.
+
+\begin{table}[htbp]
+\centering
+\caption{Main API areas exposed by the backend}
+\label{tab:apis}
+\begin{tabular}{@{}p{3.2cm}p{10cm}@{}}
+\toprule
+\textbf{Area} & \textbf{Purpose (plain language)} \\
+\midrule
+Health & Confirms the server is running. \\
+Auth & Create account, log in with password, or log in with a wallet signature. \\
+Trust score & Calculate a score, fetch a detailed breakdown, read model metadata. \\
+Data sync & Connect GitHub, run a full refresh of linked sources, read extracted features. \\
+Loans & Create and manage loan requests and related records in the database. \\
+Risk & Record defaults, link identities, social guarantees, repayment history. \\
+Graph (legacy module) & Additional graph or sybil-related endpoints as implemented in the project. \\
+Intelligence & Simulator, recommendations, demo graph JSON, and dashboard bundle. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%------------------------------------------------------------------
+\section{The server in more detail}
+\subsection{Role of the server}
+The server is the ``brain'' for accounts, stored metrics, trust scores, loan records in the database, and background jobs. It exposes \textbf{HTTP endpoints} (URLs the website calls) grouped by topic: health checks, sign-up and login, trust scores, loans, data sync, risk-related actions, graph-related routes, and an \textbf{intelligence} bundle used heavily for demos.
+
+\subsection{Sign-in and security basics}
+Users can register with email and password or use a \textbf{wallet sign-in} flow (the wallet proves control of an address). Successful login returns a \textbf{time-limited access token} (industry-standard JWT) that must be sent on later requests that require identity. Sensitive third-party tokens (for example from GitHub) can be encrypted at rest when a dedicated encryption key is configured.
+
+\subsection{Trust score: rules plus a small learned model}
+The trust score engine works in stages:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Ten normalized inputs} (each scaled roughly from 0 to 1), such as income strength, income stability, wallet age, platform quality, and repayment-related signals. Fixed weights sum to 100\% and match the project's design document.
+  \item \textbf{Penalty adjustments} for patterns that look risky (for example unusual transaction patterns or suspected duplicate identities).
+  \item \textbf{A smooth curve (sigmoid)} maps the combined raw value into a \textbf{score between 300 and 1000}, then the system assigns a \textbf{risk band} and a \textbf{suggested borrowing limit}.
+  \item \textbf{A hybrid step}: the final score blends the rule-based result with output from a \textbf{small machine-learning model} (logistic regression or gradient-boosted trees, depending on training) that estimates how likely defaults would be in synthetic training data. The API exposes both parts for transparency.
+\end{itemize}
+
+Endpoints include calculating a score for a user and returning a \textbf{detailed breakdown}: per-feature values, rule contributions, model contributions, penalties, model version, and global feature importance.
+
+\subsection{Pulling in real-world data (when enabled)}
+A \textbf{data sync} module can connect accounts and refresh information:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{GitHub} --- after the user authorizes access, the server can read public activity signals such as commit frequency, repository count, stars, and streak-like patterns, stored in dedicated tables.
+  \item \textbf{Income via Stripe (or manual paths)} --- payment regularity and monthly income hints can be normalized into an income source record.
+  \item \textbf{Wallet activity via Alchemy} --- transaction history, wallet age, and token balances can be summarized into wallet metrics.
+\end{itemize}
+
+A pipeline \textbf{extractFeatures(user)} turns raw rows into the same kind of normalized inputs the scorer expects. A \textbf{background job} can repeat sync on a timer (configurable interval) so data does not go stale immediately.
+
+\subsection{Intelligence and demo-friendly endpoints}
+Separate lightweight services support interactive demonstrations:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Score simulation} --- \texttt{POST /simulate-score} accepts slider-like inputs (income, stability, wallet age, platform strength, repayment history) and returns a new score, change from a baseline, per-feature impacts, and a limit---fast by design (well under one second, intended near tens of milliseconds).
+  \item \textbf{Loan recommendation} --- \texttt{POST /loan/recommend} suggests amount, interest, risk label, collateral hints, term, estimated monthly payment, confidence wording, and a short human-readable reason.
+  \item \textbf{Graph visualization data} --- \texttt{GET /graph/user/\{id\}} and \texttt{GET /graph/suspicious-clusters} return nodes, edges, and flagged clusters for the trust graph page (currently driven by realistic generated demo data rather than a live graph database).
+  \item \textbf{Dashboard bundle} --- \texttt{GET /dashboard} returns alerts, positive and negative factor labels, suggestions, and a feature breakdown aligned with the simulator, with a small intentional delay to mimic network latency.
+\end{itemize}
+
+\subsection{Risk reduction features (backend)}
+Additional routes under \texttt{/risk} support concepts useful for under-collateralized lending experiments: recording defaults, reducing reputation after missed payments, linking identities (wallet, email, GitHub) into a confidence score, optional social guarantees (one user vouching for another with shared downside if things go wrong), and tracking repayment behavior over time. These pieces are backed by database tables and service classes rather than only hard-coded responses.
+
+\subsection{Database and migrations}
+PostgreSQL holds user records, loan state, connected accounts, metrics from GitHub, Stripe, and wallets, trust score history, graph- and sybil-related structures, currency settings, and risk events. Schema changes are managed with \textbf{Alembic} migration scripts so environments can be upgraded in a controlled way.
+
+\subsection{Fraud awareness (conceptual)}
+The system includes hooks for spotting \textbf{coordinated abuse}: for example many fresh accounts that behave similarly, or money moving in circles to fake activity. In the full stack these ideas appear as penalty terms in scoring, dedicated database fields, and API areas related to graph and sybil analysis. On the trust graph page, \textbf{suspicious clusters} are shown in red so a viewer can grasp the idea visually even when the underlying data is illustrative.
+
+%------------------------------------------------------------------
+\section{Smart contracts (high-level)}
+The \texttt{contracts} folder contains Solidity code for:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{LoanContract} --- creates loans, tracks funding, repayment, and liquidation paths; pulls interest rates from a separate model contract and can read a trust score from a reputation contract.
+  \item \textbf{CollateralVault} --- holds collateral tokens separately from the core loan logic.
+  \item \textbf{InterestRateModel} --- computes a rate from pool usage and borrower trust.
+  \item \textbf{SoulboundReputationNFT} --- a token that is bound to an address (not meant to be sold or transferred) to represent on-chain reputation or score snapshots.
+\end{itemize}
+
+For demos, the website may \textbf{mock} chain calls or point to a local test network so visitors are not required to deploy production infrastructure.
+
+%------------------------------------------------------------------
+\section{Frontend structure (how code is organized)}
+The website source lives under \texttt{frontend/src}. Important folders include:
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{app/} --- one folder per route (\texttt{dashboard}, \texttt{loan}, \texttt{graph}, etc.).
+  \item \texttt{components/credefi/} --- reusable UI: navigation bar, dashboard panels, simulator, passport card, trust graph, loan recommendation block, wallet gate, landing content, and more.
+  \item \texttt{lib/api-client.ts} --- typed functions that call backend routes, including the intelligence endpoints.
+  \item \texttt{stores/} --- small state containers (Zustand) for wallet connection status and demo on/off.
+\end{itemize}
+
+Styling favors glass-style cards, gradients, and responsive grids so the app reads as a modern fintech product.
+
+%------------------------------------------------------------------
+\section{Configuration and running locally}
+Typical setup steps (abbreviated):
+
+\begin{itemize}[leftmargin=*]
+  \item Install Python dependencies for the server, create a \texttt{.env} file from the example, create an empty database, run \textbf{Alembic upgrade}, start the server (often on port 8000).
+  \item Install Node dependencies for the website and run the development server (often on port 3000).
+  \item Optionally compile contracts with Hardhat after installing Node packages in the contracts folder.
+\end{itemize}
+
+Environment variables cover database URL, signing secret for access tokens, allowed browser origins, GitHub app keys, Stripe secret key, Alchemy key for wallet data, encryption key for stored tokens, and background sync interval.
+
+\subsection{Quality checks}
+The frontend can be checked with the project's lint script. The Python server benefits from type hints and structured error responses. Smart contracts should be reviewed with static analysis and test suites before any main-network deployment---the repository is set up for compilation and testing through Hardhat, but \textbf{audit and legal review} remain outside the scope of this document.
+
+%------------------------------------------------------------------
+\section{Strengths, limits, and honest scope}
+\subsection{Strengths}
+\begin{itemize}[leftmargin=*]
+  \item Clear separation: UI, API, scoring logic, and chain code live in different modules.
+  \item \textbf{Explainability} is a first-class output: breakdowns, charts, and suggestion text.
+  \item \textbf{Demo mode} lowers the barrier for judges, investors, or classmates to try the product without installing a wallet or funding accounts.
+  \item The stack is widely used in industry (React, FastAPI, PostgreSQL), which helps maintenance and hiring.
+\end{itemize}
+
+\subsection{Limits}
+\begin{itemize}[leftmargin=*]
+  \item The machine-learning piece is trained on \textbf{synthetic} data for demonstration; it is not a certified credit model for real lending decisions.
+  \item External APIs only run when keys exist; otherwise the system falls back to safe defaults or demo data.
+  \item Blockchain pieces require network configuration, audits, and legal review before any real-money use.
+\end{itemize}
+
+%------------------------------------------------------------------
+\section{Conclusion}
+CreDeFi is an end-to-end \textbf{prototype} that ties together identity signals from online work and wallets, a transparent scoring pipeline, interactive ``what-if'' tools, loan suggestions, risk alerts, and optional smart-contract loan mechanics. It shows how a future product might \textbf{translate digital reputation into borrowing power} while keeping the user informed about \textbf{why} a number looks the way it does. The codebase is modular enough that each layer---website, server, database, contracts---can evolve independently as requirements change.
+
+\subsection{Possible next steps (product and engineering)}
+\begin{itemize}[leftmargin=*]
+  \item Replace synthetic model training with a carefully governed dataset and compliance review.
+  \item Add stronger identity verification (government ID, phone verification) if moving toward real lending.
+  \item Connect the trust graph endpoint to live relationship data instead of demo generation only.
+  \item Harden operational monitoring: logging, rate limits, and alerts for API abuse.
+  \item Publish a privacy policy and consent flows that match each data source (GitHub, Stripe, wallet).
+\end{itemize}
+
+%------------------------------------------------------------------
+\section*{Glossary (short)}
+\begin{description}[style=nextline, leftmargin=*]
+  \item[API] A structured way for the website to ask the server for data or actions.
+  \item[Blockchain] A shared ledger; smart contracts are programs stored on it.
+  \item[FastAPI] A Python framework for building web servers quickly and safely.
+  \item[JWT] A compact, signed token proving a user logged in recently.
+  \item[Next.js] A React-based framework for building websites with routing and server features.
+  \item[PostgreSQL] A reliable open database used to persist users and metrics.
+  \item[Wallet] Software that holds cryptographic keys for blockchain accounts; here mainly MetaMask.
+\end{description}
+
+%------------------------------------------------------------------
+\appendix
+\section{Repository layout (reference)}
+This appendix names the top-level folders so readers can map this report to the actual download.
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{backend/} --- Python server, database models, API route files under \texttt{app/api/}, business logic under \texttt{app/services/}, machine-learning helpers under \texttt{app/ml/}, migrations under \texttt{alembic/}.
+  \item \texttt{frontend/} --- Next.js site: pages under \texttt{src/app/}, shared components under \texttt{src/components/}, API helper under \texttt{src/lib/api-client.ts}.
+  \item \texttt{contracts/} --- Solidity sources, Hardhat configuration, build artifacts after compilation.
+  \item \texttt{docs/} --- This report and any additional documentation you add.
+\end{itemize}
+
+\noindent
+\textbf{Note on length.} With default \texttt{article} settings (11\,pt, A4, 1.5\,line spacing), this file is written to produce \textbf{roughly eight to twelve pages} after running \texttt{pdflatex} twice (for the table of contents). If you need a strict minimum of ten pages, add screenshots (exported PNG or PDF) using \verb|\includegraphics| from the \texttt{graphicx} package, or paste short code listings in a \texttt{verbatim} environment.
+
+\end{document}

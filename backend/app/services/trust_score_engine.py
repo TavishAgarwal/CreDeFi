@@ -413,6 +413,19 @@ def compute_loan_limit(risk_tier: str, score: float) -> float:
 # Top-level engine entry point
 # ═══════════════════════════════════════════════════════════════════════
 
+HEURISTIC_WEIGHT = 0.6
+ML_WEIGHT = 0.4
+
+
+@dataclass
+class MLComponent:
+    """ML model prediction details stored alongside the score."""
+    default_probability: float = 0.0
+    confidence: float = 0.0
+    feature_contributions: dict[str, float] = field(default_factory=dict)
+    model_type: str = "none"
+
+
 @dataclass
 class ScoreResult:
     score: float
@@ -421,20 +434,41 @@ class ScoreResult:
     features: dict[str, float]
     penalties: PenaltyBreakdown
     raw_weighted: float
-    model_version: str = "v2"
+    model_version: str = "v3-hybrid"
+    ml_component: MLComponent = field(default_factory=MLComponent)
+    heuristic_raw: float = 0.0
+    ml_raw: float = 0.0
 
 
 def calculate_trust_score(data: RawUserData) -> ScoreResult:
     features = FeatureExtractor.extract_all(data)
 
+    # --- Heuristic pathway (existing) ---
     feature_vec = np.array([features[k] for k in FEATURE_WEIGHTS])
     weight_vec = np.array(list(FEATURE_WEIGHTS.values()))
     raw_weighted = float(np.dot(feature_vec, weight_vec))
 
     penalties = PenaltyEngine.calculate(data, features)
-    penalised = max(raw_weighted - penalties.total, 0.0)
+    heuristic_penalised = max(raw_weighted - penalties.total, 0.0)
 
-    final_score = map_to_score_range(penalised)
+    # --- ML pathway ---
+    from app.ml.inference import predict_default_probability, is_model_available
+
+    ml_prediction = predict_default_probability(features)
+    ml_score = 1.0 - ml_prediction.default_probability
+
+    ml_comp = MLComponent(
+        default_probability=ml_prediction.default_probability,
+        confidence=ml_prediction.confidence,
+        feature_contributions=ml_prediction.feature_contributions,
+        model_type=ml_prediction.model_type,
+    )
+
+    # --- Hybrid combination ---
+    # finalScore = 0.6 * heuristicScore + 0.4 * (1 - defaultProbability)
+    hybrid_raw = HEURISTIC_WEIGHT * heuristic_penalised + ML_WEIGHT * ml_score
+
+    final_score = map_to_score_range(hybrid_raw)
     risk_tier = classify_risk(final_score)
     loan_limit = compute_loan_limit(risk_tier, final_score)
 
@@ -445,4 +479,8 @@ def calculate_trust_score(data: RawUserData) -> ScoreResult:
         features=features,
         penalties=penalties,
         raw_weighted=round(raw_weighted, 4),
+        model_version="v3-hybrid",
+        ml_component=ml_comp,
+        heuristic_raw=round(heuristic_penalised, 4),
+        ml_raw=round(ml_score, 4),
     )

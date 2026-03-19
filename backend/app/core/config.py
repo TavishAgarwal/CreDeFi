@@ -37,5 +37,18 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_ID: str = ""
     GITHUB_CLIENT_SECRET: str = ""
 
+    # Stripe
+    STRIPE_SECRET_KEY: str = ""
+
+    # Alchemy (Web3)
+    ALCHEMY_API_KEY: str = ""
+    ALCHEMY_NETWORK: str = "eth-mainnet"
+
+    # Encryption key for OAuth tokens at rest (Fernet)
+    TOKEN_ENCRYPTION_KEY: str = ""
+
+    # Background sync interval (seconds)
+    SYNC_INTERVAL_SECONDS: int = 3600
+
 
 settings = Settings()

@@ -1,0 +1,540 @@
+\documentclass[12pt, a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────────────
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{caption}
+\usepackage{tabularx}
+\usepackage{longtable}
+
+% ── Styling ───────────────────────────────────────────────────────
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    urlcolor=blue!60!black,
+    citecolor=blue!70!black,
+}
+
+\definecolor{codebg}{HTML}{F5F5F5}
+\definecolor{codeframe}{HTML}{DDDDDD}
+\definecolor{credefi-orange}{HTML}{F59E0B}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    rulecolor=\color{codeframe},
+    breaklines=true,
+    captionpos=b,
+    tabsize=2,
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small CreDeFi --- Technical Report}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
+
+% ── Document ──────────────────────────────────────────────────────
+\begin{document}
+
+% ── Title Page ────────────────────────────────────────────────────
+\begin{titlepage}
+\centering
+\vspace*{2cm}
+
+{\Huge\bfseries CreDeFi}\\[0.5cm]
+{\Large Reputation-Powered Decentralized Credit Protocol}\\[2cm]
+
+{\large\textbf{Technical Report}}\\[0.5cm]
+{\large Version 1.0}\\[2cm]
+
+\vfill
+
+{\large March 2026}\\[1cm]
+
+\end{titlepage}
+
+% ── Table of Contents ─────────────────────────────────────────────
+\tableofcontents
+\newpage
+
+% ══════════════════════════════════════════════════════════════════
+\section{Introduction}
+% ══════════════════════════════════════════════════════════════════
+
+Over 1.5 billion freelancers worldwide earn their income through digital platforms like GitHub, Upwork, and Stripe. Despite having steady, verifiable earnings, these workers are largely invisible to traditional banks. They have no pay stubs from an employer, no formal credit history, and therefore no way to access a standard loan.
+
+At the same time, decentralized finance (DeFi) lending exists but requires borrowers to lock up 150\% or more of their loan value as collateral --- defeating the purpose of borrowing in the first place.
+
+\textbf{CreDeFi} solves this by turning a person's verified digital work history into borrowing power. The system collects income data from professional platforms, analyzes it with an AI-driven trust score, and uses that score to issue under-collateralized loans through transparent smart contracts on the Ethereum blockchain.
+
+The key idea is simple: \textit{your reputation is your collateral.}
+
+\subsection{Goals of the Project}
+
+\begin{itemize}[nosep]
+    \item Allow freelancers to borrow money based on their work history, not physical assets.
+    \item Use artificial intelligence to assess creditworthiness from real platform data.
+    \item Detect and prevent fraud through Sybil detection and social trust graphs.
+    \item Execute all loan agreements as transparent, auditable smart contracts.
+    \item Provide lenders with risk-adjusted returns and clear borrower profiles.
+\end{itemize}
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{System Architecture}
+% ══════════════════════════════════════════════════════════════════
+
+CreDeFi is built as three independent layers that communicate through well-defined interfaces:
+
+\begin{enumerate}[nosep]
+    \item \textbf{Frontend} --- The user-facing web application (what borrowers and lenders see and interact with).
+    \item \textbf{Backend} --- The server that handles data processing, AI scoring, user accounts, and loan management.
+    \item \textbf{Smart Contracts} --- Programs deployed on the Ethereum blockchain that handle money movement, collateral, and loan enforcement.
+\end{enumerate}
+
+\subsection{Technology Stack}
+
+\begin{table}[H]
+\centering
+\caption{Technologies used in each layer}
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{Layer} & \textbf{Technologies} \\
+\midrule
+Frontend & Next.js 16 (React 19), Tailwind CSS, Ethers.js (wallet connection), Zustand (state management), Recharts (data visualization) \\
+\addlinespace
+Backend & Python (FastAPI), PostgreSQL (database), SQLAlchemy (async database access), Alembic (migrations), scikit-learn and XGBoost (machine learning) \\
+\addlinespace
+Smart Contracts & Solidity 0.8.27, Hardhat (development framework), OpenZeppelin (security libraries) \\
+\addlinespace
+Security & JWT authentication, bcrypt password hashing, Fernet token encryption, OAuth 2.0 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Data Flow}
+
+The complete flow from a user connecting their wallet to receiving a loan works as follows:
+
+\begin{enumerate}[nosep]
+    \item User connects their MetaMask wallet on the frontend.
+    \item User links their professional accounts (GitHub, Stripe, etc.).
+    \item Backend fetches verified data from these platforms via their APIs.
+    \item The AI engine processes all data into a trust score (300--1000).
+    \item The Sybil detection system checks for fraudulent behavior.
+    \item User requests a loan; the backend validates eligibility based on the score.
+    \item A lender funds the loan; the smart contract locks collateral and disburses funds.
+    \item Borrower repays in installments; on full repayment, collateral is released.
+\end{enumerate}
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Frontend Application}
+% ══════════════════════════════════════════════════════════════════
+
+The frontend is a single-page web application built with Next.js 16 using the App Router pattern. It provides seven main pages:
+
+\begin{table}[H]
+\centering
+\caption{Frontend pages and their purposes}
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{Page} & \textbf{Purpose} \\
+\midrule
+Home (\texttt{/}) & Landing page explaining what CreDeFi does, with a ``Connect Wallet'' button and a ``Try Demo'' option \\
+Dashboard (\texttt{/dashboard}) & Borrower's main view showing trust score gauge, income charts, connected platforms, and transaction history \\
+Platforms (\texttt{/platforms}) & Connect and manage income sources (GitHub, Upwork, Stripe, Wallet) \\
+Request Loan (\texttt{/loan}) & Form to specify loan amount, duration, and collateral type, with AI-powered recommendations \\
+Contract (\texttt{/contract}) & Preview and accept the smart contract terms before the loan is executed \\
+Lender (\texttt{/lender}) & Marketplace where lenders browse borrower profiles, view trust scores, and fund loans \\
+Transactions (\texttt{/transactions}) & Full history of all on-chain activities with filtering and pagination \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Wallet Connection and Authentication}
+
+Users authenticate by connecting their MetaMask browser wallet. The system uses the Ethers.js library to:
+
+\begin{itemize}[nosep]
+    \item Request the user's Ethereum address from MetaMask.
+    \item Switch to the correct blockchain network automatically.
+    \item Sign a message to prove wallet ownership (used for backend authentication).
+    \item Listen for account and network changes in real-time.
+\end{itemize}
+
+All wallet state is managed through a Zustand store, which keeps the address, connection status, and signer object synchronized across the application.
+
+\subsection{Demo Mode}
+
+For users who want to explore the platform without a wallet, CreDeFi offers a demo mode. When activated, all pages display sample data (a trust score of 782, example income charts, mock transactions) without making any API calls to the backend. A visible ``Demo Mode'' badge appears in the navigation bar, and users can exit the demo at any time.
+
+\subsection{Design System}
+
+The interface uses a dark theme with an orange brand color. Custom CSS utilities provide glass-morphism card effects (\texttt{.glass-card} with backdrop blur), orange glow effects for emphasis, and gradient text for headings. The design is fully responsive across desktop and mobile.
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Backend Server}
+% ══════════════════════════════════════════════════════════════════
+
+The backend is a Python server built with FastAPI, an asynchronous web framework. It handles 29 API endpoints across 8 route groups.
+
+\subsection{Database Design}
+
+The system uses PostgreSQL with 18 database tables organized into six domains:
+
+\begin{table}[H]
+\centering
+\caption{Database tables by domain}
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{Domain} & \textbf{Tables} \\
+\midrule
+Users \& Identity & \texttt{users}, \texttt{connected\_accounts}, \texttt{identity\_links} \\
+Trust Scoring & \texttt{trust\_scores}, \texttt{income\_sources} \\
+Loans & \texttt{loan\_requests}, \texttt{loan\_contracts}, \texttt{repayments}, \texttt{transactions} \\
+Fraud Detection & \texttt{sybil\_analyses}, \texttt{wallet\_clusters}, \texttt{session\_fingerprints} \\
+Social Graph & \texttt{trust\_graph\_edges}, \texttt{graph\_feature\_vectors} \\
+Risk Management & \texttt{default\_events}, \texttt{reputation\_penalties}, \texttt{social\_guarantees}, \texttt{repayment\_behaviors} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{API Endpoints}
+
+The 29 endpoints are grouped as follows:
+
+\begin{itemize}[nosep]
+    \item \textbf{Authentication} (4 endpoints) --- Register, login, wallet-based login, and session retrieval.
+    \item \textbf{Trust Score} (4 endpoints) --- Calculate score, get detailed breakdown, view model info, and score history.
+    \item \textbf{Loans} (5 endpoints) --- Create request, browse marketplace, fund loan, repay installment, and view history.
+    \item \textbf{Data Sync} (3 endpoints) --- Sync all platform data, connect GitHub via OAuth, and retrieve extracted features.
+    \item \textbf{Sybil Detection} (1 endpoint) --- Run fraud analysis for a user.
+    \item \textbf{Trust Graph} (2 endpoints) --- Compute graph metrics and rebuild the full graph.
+    \item \textbf{Risk Mitigation} (11 endpoints) --- Process defaults, manage penalties, link identities, handle social guarantees, and track repayment behavior.
+\end{itemize}
+
+\subsection{External Integrations}
+
+The backend connects to three external data sources:
+
+\begin{enumerate}[nosep]
+    \item \textbf{GitHub API} --- Fetches commit frequency, repository count, stars, contribution streaks, and account age. Uses OAuth for authentication. Tokens are encrypted at rest using Fernet symmetric encryption.
+    \item \textbf{Stripe API} --- Retrieves payment transaction history, calculates monthly income averages, and determines payment frequency (monthly, biweekly, or irregular).
+    \item \textbf{Alchemy API} --- Queries Ethereum blockchain data including ETH balance, transaction count, transfer history, token balances, and DeFi interaction counts.
+\end{enumerate}
+
+A background job runs every hour (configurable) to automatically refresh data for all users who have connected accounts.
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{AI Trust Scoring Engine}
+% ══════════════════════════════════════════════════════════════════
+
+The trust scoring engine is the core intelligence of CreDeFi. It produces a score between 300 and 1000 that represents how likely a borrower is to repay a loan. The system uses a \textbf{hybrid approach} that combines hand-crafted rules with a trained machine learning model.
+
+\subsection{The Ten Input Features}
+
+Every user's data is reduced to exactly ten signals, each normalized to a value between 0 and 1:
+
+\begin{table}[H]
+\centering
+\caption{Trust score features and their weights}
+\begin{tabularx}{\textwidth}{l c X}
+\toprule
+\textbf{Feature} & \textbf{Weight} & \textbf{What It Measures} \\
+\midrule
+Loan Reliability & 16\% & Ratio of on-time repayments, minus penalties for past defaults \\
+Income & 13\% & Total monthly income (log-scaled), penalized if unverified \\
+Income Stability & 12\% & How regular the payment frequency is (monthly is best) \\
+Graph Reputation & 12\% & Social trust network metrics (PageRank, clustering, connections) \\
+Currency Risk & 12\% & Stability of the currency used (USD safest, crypto riskier) \\
+Platform Quality & 10\% & Best connected platform score (bank highest, crypto wallet lowest) \\
+Wallet Age & 8\% & How long the user's account has existed (caps at 2 years) \\
+Transaction Diversity & 6\% & Variety in transaction types, chains, and counterparties \\
+Growth Trend & 6\% & Whether the user's score has been improving over time \\
+Account Behavior & 5\% & Number of connected accounts and what fraction are verified \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{The Heuristic Pathway}
+
+The heuristic score is computed as the weighted sum of all ten features:
+\[
+S_{\text{heuristic}} = \sum_{i=1}^{10} w_i \cdot f_i
+\]
+where $w_i$ is the weight and $f_i$ is the normalized feature value. This produces a raw score between 0 and 1.
+
+An anti-fraud penalty engine then applies deductions for suspicious behavior:
+
+\begin{itemize}[nosep]
+    \item \textbf{Circular transactions} --- If more than 30\% of a user's transactions are sent to themselves, a 20\% penalty is applied.
+    \item \textbf{Sybil detection} --- If the fraud detection system flags the user, up to 35\% of the score is deducted based on confidence.
+    \item \textbf{Score velocity} --- If the score jumped more than 25\% between consecutive calculations, a 15\% penalty flags potential gaming.
+    \item \textbf{Activity decay} --- If the user has been inactive for over 180 days, a 12\% decay is applied.
+    \item \textbf{Gaming detection} --- If 7 or more features are suspiciously perfect ($>0.95$), a 15\% penalty is applied.
+\end{itemize}
+
+Total penalties are capped at 60\% to prevent complete score destruction.
+
+\subsection{The Machine Learning Pathway}
+
+A logistic regression model was trained on 5,000 synthetic user profiles to predict the probability that a borrower will default. The synthetic data was generated using five user archetypes (reliable, risky, new, Sybil-like, and established) with realistic inter-feature correlations.
+
+The trained model achieved:
+
+\begin{table}[H]
+\centering
+\caption{ML model performance metrics}
+\begin{tabular}{l c}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+AUC-ROC & 0.881 \\
+Cross-validated AUC (5-fold) & 0.907 $\pm$ 0.016 \\
+Recall & 80.2\% \\
+Accuracy & 81.1\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The model outputs $P(\text{default})$, the probability that the user will fail to repay.
+
+\subsection{Hybrid Combination}
+
+The final score blends both approaches:
+\[
+S_{\text{hybrid}} = 0.6 \times S_{\text{heuristic}} + 0.4 \times (1 - P(\text{default}))
+\]
+
+This hybrid raw score (between 0 and 1) is then mapped to the 300--1000 range using a sigmoid function:
+\[
+\text{Score} = 300 + 700 \times \sigma\!\left(6 \times (S_{\text{hybrid}} - 0.45)\right)
+\]
+where $\sigma(x) = \frac{1}{1 + e^{-x}}$.
+
+The score determines the user's risk tier and maximum loan amount:
+
+\begin{table}[H]
+\centering
+\caption{Risk classification tiers}
+\begin{tabular}{l c c}
+\toprule
+\textbf{Risk Tier} & \textbf{Score Range} & \textbf{Maximum Loan} \\
+\midrule
+Low & $\geq 750$ & \$10,000 \\
+Medium & 600 -- 749 & \$5,000 \\
+High & 450 -- 599 & \$1,500 \\
+Critical & $< 450$ & \$0 (rejected) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Explainability}
+
+Every score calculation produces a full breakdown showing:
+\begin{itemize}[nosep]
+    \item The value and weighted contribution of each of the ten features.
+    \item The ML model's per-feature contribution (which features increased or decreased the predicted default risk).
+    \item The penalty breakdown (which fraud signals were triggered and by how much).
+    \item The hybrid formula showing exactly how the heuristic and ML scores were combined.
+\end{itemize}
+
+This breakdown is available through the \texttt{GET /trust-score/breakdown} endpoint and is stored in the database for every score computation.
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Sybil Detection System}
+% ══════════════════════════════════════════════════════════════════
+
+A ``Sybil attack'' occurs when one person creates multiple fake accounts to game a reputation system. CreDeFi detects this through five independent analysis methods, each producing a risk score from 0 to 1:
+
+\begin{enumerate}[nosep]
+    \item \textbf{Wallet Clustering (25\% weight)} --- Identifies groups of wallets that share funding sources or exhibit similar transaction patterns. Uses Jaccard similarity to compare transaction counterparties.
+    \item \textbf{Graph Anomaly Detection (25\%)} --- Analyzes the social trust network for unusual patterns like self-referencing loops, suspiciously dense clusters, or isolated nodes with no connections.
+    \item \textbf{Session Fingerprinting (20\%)} --- Checks whether different accounts share the same IP address hash, device fingerprint, or browser signature.
+    \item \textbf{Behavioral Similarity (15\%)} --- Detects bot-like behavior by analyzing transaction timing regularity. Human users show natural variation; bots show unnaturally precise timing.
+    \item \textbf{Contribution Quality (15\%)} --- Evaluates whether linked professional accounts (e.g., GitHub) show genuine activity or are fabricated.
+\end{enumerate}
+
+The five scores are combined into a single weighted average, and the system issues a verdict:
+\begin{itemize}[nosep]
+    \item \textbf{Clean} (score $< 0.35$) --- No fraud detected.
+    \item \textbf{Suspicious} ($0.35 \leq$ score $< 0.65$) --- Some warning signs; further review recommended.
+    \item \textbf{Sybil} (score $\geq 0.65$) --- High confidence of fraudulent activity; penalties applied.
+\end{itemize}
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Smart Contracts}
+% ══════════════════════════════════════════════════════════════════
+
+CreDeFi uses four Ethereum smart contracts written in Solidity. Together, they handle all financial operations on the blockchain.
+
+\subsection{Loan Contract}
+
+This is the main contract that manages the entire loan lifecycle:
+
+\begin{enumerate}[nosep]
+    \item \textbf{Create} --- Borrower requests a loan by specifying the amount, collateral, and duration. The contract checks the borrower's on-chain trust score and locks collateral in the vault.
+    \item \textbf{Fund} --- A lender provides the requested funds. The interest rate is computed dynamically based on pool utilization and the borrower's trust score.
+    \item \textbf{Repay} --- Borrower makes partial or full payments. Interest is calculated per-second. On full repayment, collateral is automatically released.
+    \item \textbf{Liquidate} --- If collateral value drops below the safety threshold, or the loan passes its deadline, anyone can trigger liquidation. The liquidator receives a bonus from the seized collateral.
+    \item \textbf{Default} --- When a loan is past its deadline, the contract emits a \texttt{LoanDefaulted} event that the backend monitors to trigger reputation penalties.
+\end{enumerate}
+
+\subsection{Collateral Vault}
+
+A secure holding contract for borrower collateral:
+\begin{itemize}[nosep]
+    \item Users deposit ERC-20 tokens into the vault.
+    \item When a loan is created, the vault ``locks'' a portion of the deposit.
+    \item Locked collateral cannot be withdrawn until the loan is repaid.
+    \item On liquidation, the vault transfers seized collateral to the liquidator with a configurable bonus.
+\end{itemize}
+
+\subsection{Interest Rate Model}
+
+Computes dynamic interest rates using a two-slope curve:
+\begin{itemize}[nosep]
+    \item Below the ``kink'' utilization point (e.g., 80\%), rates rise slowly.
+    \item Above the kink, rates rise steeply to discourage over-borrowing.
+    \item A trust score discount reduces rates for high-reputation borrowers (up to a configurable maximum).
+\end{itemize}
+
+\subsection{Soulbound Reputation NFT}
+
+A non-transferable (``soulbound'') ERC-721 token that stores each user's on-chain trust score:
+\begin{itemize}[nosep]
+    \item Each user gets exactly one reputation token --- it cannot be sold, transferred, or traded.
+    \item The score (0--1000) and risk tier are stored on-chain and updated by an authorized backend oracle.
+    \item Other contracts (like the Loan Contract) read this score to enforce minimum trust requirements.
+\end{itemize}
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Risk Mitigation}
+% ══════════════════════════════════════════════════════════════════
+
+Under-collateralized lending carries inherent risk. CreDeFi implements four layers of protection.
+
+\subsection{Reputation Slashing}
+
+When a borrower defaults on a loan, their trust score is immediately reduced. The penalty depends on the severity of the default:
+
+\begin{table}[H]
+\centering
+\caption{Default severity and penalties}
+\begin{tabular}{l c c l}
+\toprule
+\textbf{Severity} & \textbf{Score Penalty} & \textbf{Recovery Period} & \textbf{Trigger} \\
+\midrule
+Minor & $-50$ points & 90 days & $\leq 14$ days overdue \\
+Standard & $-120$ points & 180 days & 15--60 days overdue \\
+Severe & $-200$ points & 365 days & 61--120 days overdue \\
+Critical & $-350$ points & 730 days & $>120$ days or $>\$5,000$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Every penalty is recorded with its expiration date. After the recovery period, the penalty is deactivated, allowing the user to rebuild their reputation.
+
+\subsection{Identity Linking}
+
+Users strengthen their identity by connecting multiple verification sources. Each source has a weight:
+
+\begin{table}[H]
+\centering
+\caption{Identity verification weights}
+\begin{tabular}{l c c}
+\toprule
+\textbf{Source} & \textbf{Weight} & \textbf{If Unverified} \\
+\midrule
+GitHub & 25\% & 7.5\% \\
+Wallet & 20\% & 6.0\% \\
+Email & 15\% & 4.5\% \\
+LinkedIn & 15\% & 4.5\% \\
+Stripe & 15\% & 4.5\% \\
+Phone & 10\% & 3.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The overall identity confidence score is the sum of effective weights divided by the maximum possible weight, giving a value between 0 and 1.
+
+\subsection{Social Guarantees}
+
+Users can vouch for other borrowers. If the borrower they vouched for defaults, the guarantor's trust score is also penalized --- specifically by 30\% of their current score. This creates a strong incentive for guarantors to only vouch for people they genuinely trust.
+
+\subsection{Repayment Behavior Tracking}
+
+The system maintains running statistics for every borrower:
+\begin{itemize}[nosep]
+    \item Total loans taken, repaid, defaulted, and currently active.
+    \item Count of on-time, late, and missed payments.
+    \item Average days to repay each installment.
+    \item Current and longest streak of consecutive on-time payments.
+    \item A computed reliability score from 0 to 1.
+\end{itemize}
+
+These statistics are updated after every payment event and feed back into the trust score calculation.
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Feature Extraction Pipeline}
+% ══════════════════════════════════════════════════════════════════
+
+When data is synced from external platforms, it passes through a normalization pipeline that converts raw numbers into 17 standardized features (each scaled from 0 to 1). These features are grouped into four categories:
+
+\textbf{GitHub features:} repository activity, star reputation (log-scaled), commit consistency, contribution streak dedication, community standing (followers), and account maturity.
+
+\textbf{Wallet features:} transaction volume (log-scaled), wallet age, ETH balance health, token diversity, counterparty breadth, and DeFi engagement.
+
+\textbf{Income features:} income level (log-scaled), income verification ratio, and payment consistency.
+
+\textbf{Platform features:} number of connected platforms and overall verification ratio.
+
+Log-scaling is used for features with long-tailed distributions (e.g., income, stars, transaction count) to prevent extreme values from dominating the score.
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Security Measures}
+% ══════════════════════════════════════════════════════════════════
+
+\begin{itemize}[nosep]
+    \item \textbf{Authentication:} JWT tokens with configurable expiration. Passwords hashed with bcrypt.
+    \item \textbf{Token storage:} OAuth tokens from GitHub and Stripe are encrypted at rest using Fernet symmetric encryption before being stored in the database.
+    \item \textbf{Smart contract security:} All contracts use OpenZeppelin's audited libraries for access control, reentrancy protection, and safe token transfers.
+    \item \textbf{Soulbound enforcement:} Reputation NFTs cannot be transferred, preventing reputation trading.
+    \item \textbf{API protection:} Sensitive endpoints require JWT bearer tokens. CORS is configured to only allow the frontend origin.
+    \item \textbf{Input validation:} All API inputs are validated through Pydantic schemas before processing.
+\end{itemize}
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Conclusion}
+% ══════════════════════════════════════════════════════════════════
+
+CreDeFi demonstrates that it is possible to build a practical lending system where a person's verified work history replaces traditional collateral. By combining AI-powered creditworthiness assessment with transparent blockchain-based loan execution, the platform addresses a real gap in financial services for the global freelance workforce.
+
+The hybrid scoring model (heuristic rules blended with machine learning) provides both interpretability and predictive power. The multi-layered fraud detection system (Sybil analysis, identity linking, and social guarantees) provides protection against the unique risks of under-collateralized lending. And the on-chain smart contracts ensure that loan terms are enforced transparently, without intermediaries.
+
+The system is designed to be modular: the scoring engine, fraud detection, and smart contracts can each be upgraded independently. As real-world data accumulates, the machine learning models can be retrained on actual default outcomes rather than synthetic data, continuously improving the platform's accuracy.
+
+\end{document}

@@ -95,6 +95,27 @@ contract LoanContract is ReentrancyGuard, Ownable {
     event LoanCancelled(uint256 indexed loanId);
     event PriceUpdated(address indexed token, uint256 price);
 
+    event LoanDefaulted(
+        uint256 indexed loanId,
+        address indexed borrower,
+        uint256 principalOwed,
+        uint256 interestOwed,
+        uint256 daysOverdue,
+        string severity
+    );
+    event ReputationSlashed(
+        address indexed user,
+        uint256 penaltyPoints,
+        uint256 newScore,
+        string reason
+    );
+    event GuarantorSlashed(
+        address indexed guarantor,
+        address indexed borrower,
+        uint256 indexed loanId,
+        uint256 penaltyPoints
+    );
+
     constructor(
         address _vault,
         address _rateModel,
@@ -319,6 +340,54 @@ contract LoanContract is ReentrancyGuard, Ownable {
         uint256 totalOwed = loan.principal + loan.accruedInterest + interest - loan.repaidAmount;
 
         return block.timestamp > loan.deadline || _isUnderCollateralised(loan, totalOwed);
+    }
+
+    // ── Default handling ────────────────────────────────────────
+
+    /**
+     * @notice Mark a funded loan as defaulted. Can be called by anyone
+     *         if the loan is past deadline, or by the owner for manual default.
+     *         Emits LoanDefaulted event for backend indexing.
+     */
+    function markDefault(uint256 loanId) external nonReentrant {
+        Loan storage loan = loans[loanId];
+        require(loan.status == LoanStatus.FUNDED, "Loan: not funded");
+
+        bool pastDeadline = block.timestamp > loan.deadline;
+        bool isOwnerCall = msg.sender == owner();
+        require(pastDeadline || isOwnerCall, "Loan: not yet defaultable");
+
+        _accrueInterest(loan);
+        uint256 totalOwed = loan.principal + loan.accruedInterest - loan.repaidAmount;
+
+        loan.status = LoanStatus.LIQUIDATED;
+        activeLoanCount[loan.borrower]--;
+        totalPoolBorrows -= loan.principal;
+
+        uint256 daysOverdue = 0;
+        if (block.timestamp > loan.deadline) {
+            daysOverdue = (block.timestamp - loan.deadline) / 1 days;
+        }
+
+        string memory severity;
+        if (daysOverdue > 120 || totalOwed > 5000e18) {
+            severity = "critical";
+        } else if (daysOverdue > 60) {
+            severity = "severe";
+        } else if (daysOverdue > 14) {
+            severity = "standard";
+        } else {
+            severity = "minor";
+        }
+
+        emit LoanDefaulted(
+            loanId,
+            loan.borrower,
+            loan.principal - loan.repaidAmount,
+            loan.accruedInterest,
+            daysOverdue,
+            severity
+        );
     }
 
     // ── Admin ────────────────────────────────────────────────────

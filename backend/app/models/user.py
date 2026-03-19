@@ -44,6 +44,12 @@ class User(TimestampMixin, Base):
     graph_features: Mapped[list["GraphFeatureVector"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", lazy="selectin"
     )
+    github_metrics: Mapped[list["GitHubMetrics"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+    )
+    wallet_metrics: Mapped[list["WalletMetrics"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+    )
 
     def __repr__(self) -> str:
         return f"<User {self.email}>"
@@ -54,3 +60,4 @@ from app.models.core import ConnectedAccount, IncomeSource, TrustScore  # noqa: 
 from app.models.loan import LoanRequest  # noqa: E402, F401
 from app.models.sybil import SybilAnalysis  # noqa: E402, F401
 from app.models.graph import GraphFeatureVector  # noqa: E402, F401
+from app.models.integrations import GitHubMetrics, WalletMetrics  # noqa: E402, F401

@@ -47,6 +47,17 @@ class AccountProvider(str, enum.Enum):
     STRIPE = "stripe"
     METAMASK = "metamask"
     PHANTOM = "phantom"
+    GITHUB = "github"
+    UPWORK = "upwork"
+    FIVERR = "fiverr"
+    ALCHEMY = "alchemy"
+
+
+class SyncStatus(str, enum.Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class IncomeFrequency(str, enum.Enum):

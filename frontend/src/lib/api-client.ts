@@ -158,6 +158,127 @@ class ApiClient {
   health = {
     check: () => this.get<{ status: string }>("/health"),
   };
+
+  // ── Intelligence (Demo) ─────────────────────────────────────
+
+  intelligence = {
+    simulateScore: (data: {
+      income: number;
+      income_stability: number;
+      wallet_age: number;
+      platform_score: number;
+      repayment_history: number;
+      baseline_score?: number;
+    }) => this.post<SimulationResponse>("/simulate-score", data),
+
+    loanRecommend: (data: {
+      score: number;
+      income: number;
+      stability: number;
+    }) => this.post<LoanRecommendation>("/loan/recommend", data),
+
+    getUserGraph: (userId: string) =>
+      this.get<GraphVisualization>(`/graph/user/${userId}`),
+
+    getSuspiciousClusters: () =>
+      this.get<SuspiciousCluster[]>("/graph/suspicious-clusters"),
+
+    getDashboard: (params?: {
+      score?: number;
+      income?: number;
+      stability?: number;
+      wallet_age?: number;
+      platforms?: number;
+    }) => {
+      const qs = new URLSearchParams();
+      if (params?.score) qs.set("score", String(params.score));
+      if (params?.income) qs.set("income", String(params.income));
+      if (params?.stability) qs.set("stability", String(params.stability));
+      if (params?.wallet_age) qs.set("wallet_age", String(params.wallet_age));
+      if (params?.platforms) qs.set("platforms", String(params.platforms));
+      const query = qs.toString();
+      return this.get<DashboardData>(`/dashboard${query ? `?${query}` : ""}`);
+    },
+  };
 }
 
 export const api = new ApiClient(API_URL);
+
+// Intelligence types
+export interface SimulationResponse {
+  score: number;
+  risk_tier: string;
+  delta: number;
+  feature_impacts: FeatureImpact[];
+  loan_limit: number;
+  raw_weighted: number;
+}
+
+export interface FeatureImpact {
+  feature: string;
+  value: number;
+  weight: number;
+  contribution: number;
+  direction: string;
+}
+
+export interface LoanRecommendation {
+  recommended_amount: number;
+  recommended_interest: number;
+  risk_level: string;
+  reasoning: string;
+  collateral_ratio: number;
+  max_term_days: number;
+  monthly_payment: number;
+  confidence: string;
+}
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  score: number;
+  risk: string;
+  is_suspicious: boolean;
+  cluster_id: number | null;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+  edge_type: string;
+}
+
+export interface SuspiciousCluster {
+  cluster_id: number;
+  node_ids: string[];
+  reason: string;
+  severity: string;
+}
+
+export interface GraphVisualization {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  clusters: SuspiciousCluster[];
+  total_nodes: number;
+  total_edges: number;
+}
+
+export interface RiskAlert {
+  severity: string;
+  title: string;
+  message: string;
+  category: string;
+  action: string | null;
+}
+
+export interface DashboardData {
+  score: number;
+  risk_tier: string;
+  loan_limit: number;
+  alerts: RiskAlert[];
+  suggestions: { text: string; impact: string; category: string }[];
+  positive_factors: string[];
+  negative_factors: string[];
+  feature_breakdown: FeatureImpact[];
+}

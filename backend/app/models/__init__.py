@@ -6,6 +6,7 @@ from app.models.enums import (  # noqa: F401
     RepaymentStatus,
     RiskTier,
     SybilVerdict,
+    SyncStatus,
     TransactionStatus,
     TransactionType,
 )
@@ -15,3 +16,8 @@ from app.models.loan import LoanRequest, LoanContract, Repayment, Transaction  #
 from app.models.sybil import SybilAnalysis, WalletCluster, SessionFingerprint  # noqa: F401
 from app.models.graph import TrustGraphEdge, GraphFeatureVector  # noqa: F401
 from app.models.currency import ExchangeRate, CurrencyConfig  # noqa: F401
+from app.models.integrations import GitHubMetrics, WalletMetrics, DataSyncLog  # noqa: F401
+from app.models.risk import (  # noqa: F401
+    DefaultEvent, ReputationPenalty, IdentityLink,
+    SocialGuarantee, RepaymentBehavior,
+)

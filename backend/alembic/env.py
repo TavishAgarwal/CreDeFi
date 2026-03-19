@@ -15,6 +15,8 @@ from app.models.loan import LoanRequest, LoanContract, Repayment, Transaction  #
 from app.models.sybil import SybilAnalysis, WalletCluster, SessionFingerprint  # noqa: F401
 from app.models.graph import TrustGraphEdge, GraphFeatureVector  # noqa: F401
 from app.models.currency import ExchangeRate, CurrencyConfig  # noqa: F401
+from app.models.integrations import GitHubMetrics, WalletMetrics, DataSyncLog  # noqa: F401
+from app.models.risk import DefaultEvent, ReputationPenalty, IdentityLink, SocialGuarantee, RepaymentBehavior  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)

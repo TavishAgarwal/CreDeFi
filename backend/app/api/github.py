@@ -2,6 +2,8 @@
 GitHub OAuth API endpoints.
 """
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,12 +20,10 @@ router = APIRouter(prefix="/github", tags=["github"])
 
 @router.get("/connect")
 async def github_connect(
-    redirect_uri: str = Query(default="http://localhost:3000/connections/callback"),
+    redirect_uri: str = Query(default="http://localhost:3000/platforms"),
     user: User = Depends(get_current_user),
 ):
     """Return the GitHub OAuth authorization URL."""
-    import uuid
-
     state = str(uuid.uuid4())
     try:
         url = GitHubService.get_oauth_url(redirect_uri, state)
@@ -39,45 +39,41 @@ async def github_callback(
     session: AsyncSession = Depends(get_session),
 ):
     """Exchange OAuth code for a token, fetch profile, and store as ConnectedAccount."""
+    svc = GitHubService(session)
     try:
-        # Exchange code for access token
-        access_token = await GitHubService.exchange_code(code)
-
-        # Fetch GitHub profile
-        profile = await GitHubService.fetch_profile(access_token)
-
-        # Check if GitHub is already connected
-        existing = await session.scalar(
-            select(ConnectedAccount).where(
-                ConnectedAccount.user_id == user.id,
-                ConnectedAccount.provider == AccountProvider.GITHUB,
-            )
+        account = await svc.connect_account(user.id, code)
+        await session.commit()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"GitHub OAuth failed: {exc}",
         )
 
-        if existing:
-            # Update metadata
-            existing.account_identifier = profile["login"]
-            existing.is_verified = True
-            existing.metadata_json = profile
-        else:
-            # Create new
-            account = GitHubService.build_connected_account(user.id, profile)
-            session.add(account)
-
-        await session.flush()
-
+    try:
+        metrics = await svc.sync_metrics(user.id)
+        await session.commit()
         return {
             "status": "connected",
-            "login": profile["login"],
-            "public_repos": profile["public_repos"],
-            "account_age_days": profile["account_age_days"],
-            "original_repos": profile["original_repos_count"],
-            "total_stars": profile["total_stars"],
+            "login": account.account_identifier,
+            "public_repos": metrics.public_repos,
+            "account_age_days": metrics.account_age_days,
+            "original_repos": metrics.public_repos,
+            "total_stars": metrics.total_stars,
         }
-    except GitHubServiceError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc),
-        )
+    except Exception:
+        return {
+            "status": "connected",
+            "login": account.account_identifier,
+            "public_repos": 0,
+            "account_age_days": 0,
+            "original_repos": 0,
+            "total_stars": 0,
+        }
 
 
 @router.get("/profile")
