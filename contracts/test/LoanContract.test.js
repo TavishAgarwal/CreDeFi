@@ -32,14 +32,13 @@ describe("LoanContract", function () {
     const NFT = await ethers.getContractFactory("SoulboundReputationNFT");
     nft = await NFT.deploy();
 
-    // Deploy LoanContract
+    // Deploy LoanContract (no more collateralRatioBps param)
     const Loan = await ethers.getContractFactory("LoanContract");
     loanC = await Loan.deploy(
       await vault.getAddress(),
       await rateModel.getAddress(),
       await nft.getAddress(),
-      300,   // minTrustScore
-      15000, // 150 % collateral ratio
+      450,   // minTrustScore (aligned with dynamic collateral)
       3      // max active loans
     );
 
@@ -54,7 +53,7 @@ describe("LoanContract", function () {
     // Set pool supply for rate calculation
     await loanC.setPoolSupply(ethers.parseEther("100000"));
 
-    // Mint reputation for borrower (score 700)
+    // Mint reputation for borrower (score 700 → 80% collateral tier)
     await nft.mintReputation(borrower.address, 700, "GOOD");
 
     // Fund accounts
@@ -76,13 +75,69 @@ describe("LoanContract", function () {
     await deployFixture();
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // Dynamic Collateral Ratio  (NEW)
+  // ═══════════════════════════════════════════════════════════════
+
+  describe("getCollateralRatioBps", function () {
+    it("reverts for score < 450", async function () {
+      await expect(loanC.getCollateralRatioBps(0))
+        .to.be.revertedWith("Loan: score not eligible");
+      await expect(loanC.getCollateralRatioBps(449))
+        .to.be.revertedWith("Loan: score not eligible");
+    });
+
+    it("returns 12000 bps (120%) for score 450–599", async function () {
+      expect(await loanC.getCollateralRatioBps(450)).to.equal(12000n);
+      expect(await loanC.getCollateralRatioBps(500)).to.equal(12000n);
+      expect(await loanC.getCollateralRatioBps(599)).to.equal(12000n);
+    });
+
+    it("returns 8000 bps (80%) for score 600–749", async function () {
+      expect(await loanC.getCollateralRatioBps(600)).to.equal(8000n);
+      expect(await loanC.getCollateralRatioBps(700)).to.equal(8000n);
+      expect(await loanC.getCollateralRatioBps(749)).to.equal(8000n);
+    });
+
+    it("returns 6000 bps (60%) for score 750–849", async function () {
+      expect(await loanC.getCollateralRatioBps(750)).to.equal(6000n);
+      expect(await loanC.getCollateralRatioBps(800)).to.equal(6000n);
+      expect(await loanC.getCollateralRatioBps(849)).to.equal(6000n);
+    });
+
+    it("returns 4000 bps (40%) for score 850–949", async function () {
+      expect(await loanC.getCollateralRatioBps(850)).to.equal(4000n);
+      expect(await loanC.getCollateralRatioBps(900)).to.equal(4000n);
+      expect(await loanC.getCollateralRatioBps(949)).to.equal(4000n);
+    });
+
+    it("returns 2000 bps (20%) for score 950–1000", async function () {
+      expect(await loanC.getCollateralRatioBps(950)).to.equal(2000n);
+      expect(await loanC.getCollateralRatioBps(1000)).to.equal(2000n);
+    });
+
+    it("handles exact boundary values correctly", async function () {
+      // Each boundary transitions to the next tier
+      expect(await loanC.getCollateralRatioBps(450)).to.equal(12000n);  // first eligible
+      expect(await loanC.getCollateralRatioBps(600)).to.equal(8000n);   // tier jump
+      expect(await loanC.getCollateralRatioBps(750)).to.equal(6000n);   // tier jump
+      expect(await loanC.getCollateralRatioBps(850)).to.equal(4000n);   // tier jump
+      expect(await loanC.getCollateralRatioBps(950)).to.equal(2000n);   // best tier
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // Create Loan  (UPDATED for dynamic collateral)
+  // ═══════════════════════════════════════════════════════════════
+
   describe("Create Loan", function () {
-    it("creates a loan request successfully", async function () {
+    it("creates a loan with score 700 → 80% collateral", async function () {
+      // Score 700 → 80% ratio → 1000 principal needs 800 collateral
       const tx = await loanC.connect(borrower).createLoan(
         await borrowToken.getAddress(),
         await collateralToken.getAddress(),
         ethers.parseEther("1000"),
-        ethers.parseEther("1500"),
+        ethers.parseEther("800"), // exactly 80%
         30 * DAY
       );
 
@@ -91,11 +146,24 @@ describe("LoanContract", function () {
       const loan = await loanC.getLoan(1);
       expect(loan.borrower).to.equal(borrower.address);
       expect(loan.principal).to.equal(ethers.parseEther("1000"));
-      expect(loan.collateralAmount).to.equal(ethers.parseEther("1500"));
+      expect(loan.collateralAmount).to.equal(ethers.parseEther("800"));
       expect(loan.status).to.equal(0); // OPEN
     });
 
-    it("reverts if trust score too low", async function () {
+    it("accepts over-collateralised loan", async function () {
+      // Score 700 → 80%. Providing 120% should still pass
+      await loanC.connect(borrower).createLoan(
+        await borrowToken.getAddress(),
+        await collateralToken.getAddress(),
+        ethers.parseEther("1000"),
+        ethers.parseEther("1200"),
+        30 * DAY
+      );
+      const loan = await loanC.getLoan(1);
+      expect(loan.collateralAmount).to.equal(ethers.parseEther("1200"));
+    });
+
+    it("reverts if trust score too low (< 450)", async function () {
       // Mint a low-score reputation for lender as a new borrower
       await nft.mintReputation(lender.address, 100, "VERY_POOR");
       await collateralToken.mint(lender.address, ethers.parseEther("5000"));
@@ -113,17 +181,46 @@ describe("LoanContract", function () {
       ).to.be.revertedWith("Loan: trust score too low");
     });
 
-    it("reverts if collateral insufficient", async function () {
-      // 1000 borrowed requires 1500 collateral (150 %). We supply only 1000.
+    it("reverts if collateral insufficient for dynamic ratio", async function () {
+      // Score 700 → 80% required. 1000 principal needs ≥ 800.  Supply only 700.
       await expect(
         loanC.connect(borrower).createLoan(
           await borrowToken.getAddress(),
           await collateralToken.getAddress(),
           ethers.parseEther("1000"),
-          ethers.parseEther("1000"),
+          ethers.parseEther("700"),
           30 * DAY
         )
       ).to.be.revertedWith("Loan: insufficient collateral value");
+    });
+
+    it("respects higher collateral for lower trust scores", async function () {
+      // Create a user with score 500 → 120% collateral required
+      await nft.mintReputation(liquidator.address, 500, "FAIR");
+      await collateralToken.mint(liquidator.address, ethers.parseEther("5000"));
+      await collateralToken.connect(liquidator).approve(await vault.getAddress(), ethers.MaxUint256);
+      await vault.connect(liquidator).deposit(await collateralToken.getAddress(), ethers.parseEther("5000"));
+      await borrowToken.connect(lender).approve(await loanC.getAddress(), ethers.MaxUint256);
+
+      // 1000 principal, 120% → needs 1200.  1100 should fail.
+      await expect(
+        loanC.connect(liquidator).createLoan(
+          await borrowToken.getAddress(),
+          await collateralToken.getAddress(),
+          ethers.parseEther("1000"),
+          ethers.parseEther("1100"),
+          30 * DAY
+        )
+      ).to.be.revertedWith("Loan: insufficient collateral value");
+
+      // 1200 should pass
+      await loanC.connect(liquidator).createLoan(
+        await borrowToken.getAddress(),
+        await collateralToken.getAddress(),
+        ethers.parseEther("1000"),
+        ethers.parseEther("1200"),
+        30 * DAY
+      );
     });
 
     it("reverts for zero principal", async function () {
@@ -156,7 +253,7 @@ describe("LoanContract", function () {
           await borrowToken.getAddress(),
           await collateralToken.getAddress(),
           ethers.parseEther("100"),
-          ethers.parseEther("150"),
+          ethers.parseEther("80"), // 80% of 100
           30 * DAY
         );
       }
@@ -166,12 +263,16 @@ describe("LoanContract", function () {
           await borrowToken.getAddress(),
           await collateralToken.getAddress(),
           ethers.parseEther("100"),
-          ethers.parseEther("150"),
+          ethers.parseEther("80"),
           30 * DAY
         )
       ).to.be.revertedWith("Loan: too many active loans");
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // Cancel Loan
+  // ═══════════════════════════════════════════════════════════════
 
   describe("Cancel Loan", function () {
     beforeEach(async function () {
@@ -179,7 +280,7 @@ describe("LoanContract", function () {
         await borrowToken.getAddress(),
         await collateralToken.getAddress(),
         ethers.parseEther("1000"),
-        ethers.parseEther("1500"),
+        ethers.parseEther("800"), // 80% for score 700
         30 * DAY
       );
     });
@@ -201,13 +302,17 @@ describe("LoanContract", function () {
     });
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // Fund Loan
+  // ═══════════════════════════════════════════════════════════════
+
   describe("Fund Loan", function () {
     beforeEach(async function () {
       await loanC.connect(borrower).createLoan(
         await borrowToken.getAddress(),
         await collateralToken.getAddress(),
         ethers.parseEther("1000"),
-        ethers.parseEther("1500"),
+        ethers.parseEther("800"),
         30 * DAY
       );
     });
@@ -236,18 +341,22 @@ describe("LoanContract", function () {
     });
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // Repay
+  // ═══════════════════════════════════════════════════════════════
+
   describe("Repay", function () {
     beforeEach(async function () {
       await loanC.connect(borrower).createLoan(
         await borrowToken.getAddress(),
         await collateralToken.getAddress(),
         ethers.parseEther("1000"),
-        ethers.parseEther("1500"),
+        ethers.parseEther("800"),
         30 * DAY
       );
       await loanC.connect(lender).fundLoan(1);
 
-      // Give borrower tokens to repay (principal came from lender)
+      // Give borrower tokens to repay
       await borrowToken.mint(borrower.address, ethers.parseEther("2000"));
       await borrowToken.connect(borrower).approve(await loanC.getAddress(), ethers.MaxUint256);
     });
@@ -266,7 +375,6 @@ describe("LoanContract", function () {
     it("full repay marks loan REPAID and unlocks collateral", async function () {
       await time.increase(1 * DAY);
 
-      // Overpay to ensure full coverage (caps automatically)
       await expect(loanC.connect(borrower).repay(1, ethers.parseEther("2000")))
         .to.emit(loanC, "LoanFullyRepaid").withArgs(1);
 
@@ -278,12 +386,11 @@ describe("LoanContract", function () {
     });
 
     it("reverts repay on non-funded loan", async function () {
-      // Create and cancel another loan
       await loanC.connect(borrower).createLoan(
         await borrowToken.getAddress(),
         await collateralToken.getAddress(),
         ethers.parseEther("100"),
-        ethers.parseEther("150"),
+        ethers.parseEther("80"),
         30 * DAY
       );
       await loanC.connect(borrower).cancelLoan(2);
@@ -293,20 +400,24 @@ describe("LoanContract", function () {
     });
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // Liquidation
+  // ═══════════════════════════════════════════════════════════════
+
   describe("Liquidation", function () {
     beforeEach(async function () {
+      // Over-collateralise (1200 > 80% minimum of 800) so loan starts healthy
       await loanC.connect(borrower).createLoan(
         await borrowToken.getAddress(),
         await collateralToken.getAddress(),
         ethers.parseEther("1000"),
-        ethers.parseEther("1500"),
+        ethers.parseEther("1200"),
         30 * DAY
       );
       await loanC.connect(lender).fundLoan(1);
     });
 
     it("liquidates overdue loan", async function () {
-      // Advance past deadline
       await time.increase(31 * DAY);
 
       await expect(loanC.connect(liquidator).liquidate(1))
@@ -316,27 +427,29 @@ describe("LoanContract", function () {
       const loan = await loanC.getLoan(1);
       expect(loan.status).to.equal(3); // LIQUIDATED
 
-      // Liquidator received collateral tokens
       expect(await collateralToken.balanceOf(liquidator.address)).to.be.gt(0);
     });
 
     it("liquidates under-collateralised loan", async function () {
-      // Drop collateral price to make it under-collateralised
-      // At 150% collateral ratio with 1000 debt and 1500 collateral, both at $1
-      // Liquidation threshold is 80%. If collateral value < 80% of debt value → liquidatable
-      // Set collateral price to $0.50 → value = 750, debt ~ 1000+interest, 750 < 800 → liquidatable
-      await loanC.setPrice(await collateralToken.getAddress(), ethers.parseEther("0.5"));
+      // 1200 collateral at $1 = $1200, debt ~ $1000
+      // Liquidation threshold 80%: liquidatable when collateral < 80% of debt
+      // Drop collateral price to $0.60 → value = 720 < 800 → liquidatable
+      await loanC.setPrice(await collateralToken.getAddress(), ethers.parseEther("0.6"));
 
       await expect(loanC.connect(liquidator).liquidate(1))
         .to.emit(loanC, "LoanLiquidated");
     });
 
     it("reverts if not liquidatable", async function () {
-      // Loan is healthy and not overdue
+      // Loan is over-collateralised (1200 >> 800 threshold) and not overdue
       await expect(loanC.connect(liquidator).liquidate(1))
         .to.be.revertedWith("Loan: not liquidatable");
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // View functions
+  // ═══════════════════════════════════════════════════════════════
 
   describe("View functions", function () {
     beforeEach(async function () {
@@ -344,7 +457,7 @@ describe("LoanContract", function () {
         await borrowToken.getAddress(),
         await collateralToken.getAddress(),
         ethers.parseEther("1000"),
-        ethers.parseEther("1500"),
+        ethers.parseEther("800"),
         30 * DAY
       );
       await loanC.connect(lender).fundLoan(1);
@@ -369,19 +482,14 @@ describe("LoanContract", function () {
     });
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // Admin
+  // ═══════════════════════════════════════════════════════════════
+
   describe("Admin", function () {
     it("owner sets min trust score", async function () {
       await loanC.setMinTrustScore(500);
       expect(await loanC.minTrustScore()).to.equal(500n);
-    });
-
-    it("owner sets collateral ratio", async function () {
-      await loanC.setCollateralRatio(20000);
-      expect(await loanC.collateralRatioBps()).to.equal(20000n);
-    });
-
-    it("reverts collateral ratio below 100 %", async function () {
-      await expect(loanC.setCollateralRatio(9999)).to.be.revertedWith("ratio < 100%");
     });
 
     it("non-owner cannot set prices", async function () {

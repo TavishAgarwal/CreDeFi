@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Download, RefreshCw, ExternalLink, TrendingUp, ShieldCheck, Clock } from "lucide-react";
+import Link from "next/link";
+import { Download, RefreshCw, ExternalLink, TrendingUp, ShieldCheck, Clock, Search, ArrowUpRight, ArrowDownLeft, Link2, Repeat } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { PageShell } from "@/components/layout/page-shell";
+import { ResponsiveGrid } from "@/components/ui/responsive-grid";
 
 const TABS = ["All Activities", "Loans", "Repayments", "Connections", "Lending"];
 
@@ -74,24 +76,40 @@ function statusVariant(s: TxRow["status"]) {
   }
 }
 
+function typeIconComponent(icon: string) {
+  switch (icon) {
+    case "deposit":
+      return <ArrowDownLeft className="h-4 w-4" />;
+    case "loan":
+      return <ArrowUpRight className="h-4 w-4" />;
+    case "connection":
+      return <Link2 className="h-4 w-4" />;
+    case "repayment":
+      return <Repeat className="h-4 w-4" />;
+    default:
+      return <ArrowUpRight className="h-4 w-4" />;
+  }
+}
+
 function typeIconBg(icon: string) {
   switch (icon) {
     case "deposit":
-      return "bg-emerald-500/20 text-emerald-400";
+      return "bg-emerald-500/15 text-emerald-400";
     case "loan":
-      return "bg-brand/20 text-brand";
+      return "bg-brand/15 text-brand";
     case "connection":
-      return "bg-blue-500/20 text-blue-400";
+      return "bg-blue-500/15 text-blue-400";
     case "repayment":
-      return "bg-red-500/20 text-red-400";
+      return "bg-red-500/15 text-red-400";
     default:
-      return "bg-gray-500/20 text-gray-400";
+      return "bg-gray-500/15 text-gray-400";
   }
 }
 
 export default function TransactionsPage() {
   const [activeTab, setActiveTab] = useState("All Activities");
   const [page, setPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
   const totalItems = 128;
   const perPage = 10;
   const totalPages = Math.ceil(totalItems / perPage);
@@ -102,23 +120,42 @@ export default function TransactionsPage() {
       subtitle="View and manage your protocol activities across the DeFi ecosystem."
       actions={
         <>
-          <button className="flex items-center gap-2 rounded-lg border border-surface-border px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-surface-light">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+            <input
+              type="text"
+              placeholder="Search transactions..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="rounded-xl border border-surface-border bg-surface py-2.5 pl-9 pr-4 text-sm text-white outline-none placeholder:text-gray-600 focus:border-brand transition-colors"
+            />
+          </div>
+          <button className="flex items-center gap-2 rounded-xl border border-surface-border px-4 py-2.5 text-sm font-medium text-gray-300 transition-all duration-200 hover:bg-surface-light hover:border-gray-600">
             <Download className="h-4 w-4" /> Export CSV
           </button>
-          <button className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-gray-950 transition-colors hover:bg-amber-400">
+          <button className="flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-gray-950 transition-all duration-200 hover:bg-amber-400 hover:shadow-lg hover:shadow-brand/20">
             <RefreshCw className="h-4 w-4" /> Refresh
           </button>
         </>
       }
     >
+      {/* Breadcrumb */}
+      <div className="mb-6 flex items-center gap-2 text-sm">
+        <Link href="/dashboard" className="text-gray-500 transition-colors hover:text-gray-300">
+          Dashboard
+        </Link>
+        <span className="text-gray-600">&rsaquo;</span>
+        <span className="font-medium text-brand">Transactions</span>
+      </div>
+
       {/* Tabs */}
-      <Card padding={false}>
+      <Card padding={false} hover={false}>
         <div className="flex gap-1 border-b border-surface-border px-6 pt-4">
           {TABS.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+              className={`rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors duration-200 ${
                 activeTab === tab
                   ? "border-b-2 border-brand text-brand"
                   : "text-gray-500 hover:text-gray-300"
@@ -126,7 +163,7 @@ export default function TransactionsPage() {
             >
               {tab}
               {tab === "All Activities" && (
-                <span className="ml-1.5 rounded-full bg-brand/20 px-2 py-0.5 text-xs text-brand">
+                <span className="ml-1.5 rounded-full bg-brand/15 px-2 py-0.5 text-xs text-brand">
                   {totalItems}
                 </span>
               )}
@@ -139,48 +176,46 @@ export default function TransactionsPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-surface-border text-xs uppercase tracking-wider text-gray-500">
-                <th className="px-6 py-3 font-medium">Date / Time</th>
-                <th className="px-6 py-3 font-medium">Transaction Type</th>
-                <th className="px-6 py-3 font-medium">Asset / Amount</th>
-                <th className="px-6 py-3 font-medium">Status</th>
-                <th className="px-6 py-3 font-medium">TX Hash</th>
-                <th className="px-6 py-3 font-medium">Action</th>
+                <th className="px-6 py-3.5 font-medium">Date / Time</th>
+                <th className="px-6 py-3.5 font-medium">Transaction Type</th>
+                <th className="px-6 py-3.5 font-medium">Asset / Amount</th>
+                <th className="px-6 py-3.5 font-medium">Status</th>
+                <th className="px-6 py-3.5 font-medium">TX Hash</th>
+                <th className="px-6 py-3.5 font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
               {DEMO_TXS.map((tx, i) => (
                 <tr
                   key={i}
-                  className="border-b border-surface-border/50 transition-colors hover:bg-surface-light"
+                  className="border-b border-surface-border/50 transition-colors duration-200 hover:bg-surface-light/50"
                 >
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-5">
                     <p className="font-medium">{tx.date}</p>
                     <p className="text-xs text-gray-500">{tx.time}</p>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
+                  <td className="px-6 py-5">
+                    <div className="flex items-center gap-2.5">
                       <span
                         className={`flex h-8 w-8 items-center justify-center rounded-lg ${typeIconBg(tx.typeIcon)}`}
                       >
-                        <span className="text-xs font-bold">
-                          {tx.typeIcon[0].toUpperCase()}
-                        </span>
+                        {typeIconComponent(tx.typeIcon)}
                       </span>
                       <span className="font-medium">{tx.type}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-5">
                     <p className="font-semibold">{tx.asset}</p>
                     <p className="text-xs text-gray-500">{tx.assetSub}</p>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-5">
                     <StatusBadge label={tx.status} variant={statusVariant(tx.status)} />
                   </td>
-                  <td className="px-6 py-4 font-mono text-sm text-gray-400">
+                  <td className="px-6 py-5 font-mono text-sm text-gray-400">
                     {tx.txHash}
                   </td>
-                  <td className="px-6 py-4">
-                    <button className="text-gray-500 transition-colors hover:text-white">
+                  <td className="px-6 py-5">
+                    <button className="text-gray-500 transition-colors duration-200 hover:text-white">
                       <ExternalLink className="h-4 w-4" />
                     </button>
                   </td>
@@ -209,9 +244,9 @@ export default function TransactionsPage() {
               <button
                 key={p}
                 onClick={() => setPage(p)}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
                   page === p
-                    ? "bg-brand text-gray-950"
+                    ? "bg-brand text-gray-950 shadow-md shadow-brand/20"
                     : "text-gray-400 hover:bg-surface-light"
                 }`}
               >
@@ -241,7 +276,7 @@ export default function TransactionsPage() {
       </Card>
 
       {/* Summary Stats */}
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+      <ResponsiveGrid className="mt-10" sm={3} gap={1}>
         <StatCard
           label="Total Volume"
           value="$24,982.50"
@@ -257,7 +292,7 @@ export default function TransactionsPage() {
           value="~12s"
           icon={<Clock className="h-5 w-5" />}
         />
-      </div>
+      </ResponsiveGrid>
     </PageShell>
   );
 }

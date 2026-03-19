@@ -25,19 +25,36 @@ export type ConnectionStatus =
 // ── Trust Score ──────────────────────────────────────────────────
 
 export type RiskTier =
+  | "low"
+  | "medium"
+  | "high"
+  | "critical"
   | "EXCELLENT"
   | "GOOD"
   | "FAIR"
   | "POOR"
   | "VERY_POOR";
 
+export interface TrustScorePenalties {
+  circular_tx: number;
+  sybil: number;
+  velocity: number;
+  decay: number;
+  gaming: number;
+  total: number;
+}
+
 export interface TrustScoreResult {
   score: number;
   risk_tier: RiskTier;
   loan_limit: number;
-  penalties: PenaltyDetail[];
+  features: Record<string, number>;
+  penalties: TrustScorePenalties;
   feature_contributions: Record<string, number>;
+  connected_accounts?: number;
   computed_at: string;
+  model_version: string;
+  raw_weighted: number;
 }
 
 export interface PenaltyDetail {
@@ -68,6 +85,15 @@ export interface LoanRequest {
   risk_tier: RiskTier;
   status: LoanStatus;
   created_at: string;
+}
+
+export interface LoanEligibility {
+  trust_score: number;
+  collateral_ratio: number | null;
+  max_borrow_amount: number;
+  interest_rate: number;
+  eligible: boolean;
+  message: string | null;
 }
 
 export interface LoanContract {

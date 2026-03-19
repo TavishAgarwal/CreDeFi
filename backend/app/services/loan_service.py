@@ -37,31 +37,60 @@ logger = get_logger(__name__)
 
 MOCK_ESCROW = "0xCREDEFI_ESCROW_CONTRACT"
 
-# ─── Risk-tier policy tables ──────────────────────────────────────
+# ─── Dynamic trust-score policy functions ─────────────────────────
+#
+# These mirror the on-chain getCollateralRatioBps() exactly so the
+# backend and smart contract agree on eligibility.
 
-INTEREST_RATE_BPS: dict[RiskTier, int] = {
-    RiskTier.LOW:      500,     #  5 %
-    RiskTier.MEDIUM:   1200,    # 12 %
-    RiskTier.HIGH:     2400,    # 24 %
-    RiskTier.CRITICAL: 0,       # not eligible
-}
-
-COLLATERAL_RATIO: dict[RiskTier, float] = {
-    RiskTier.LOW:      0.0,     # unsecured
-    RiskTier.MEDIUM:   0.50,    # 50 % of principal
-    RiskTier.HIGH:     1.20,    # 120 %
-    RiskTier.CRITICAL: 0.0,     # rejected outright
-}
-
-MAX_LOAN_BY_TIER: dict[RiskTier, float] = {
-    RiskTier.LOW:      10_000.0,
-    RiskTier.MEDIUM:    5_000.0,
-    RiskTier.HIGH:      1_500.0,
-    RiskTier.CRITICAL:      0.0,
-}
-
-MIN_TRUST_SCORE = 350          # absolute floor to request any loan
+MIN_TRUST_SCORE = 450          # absolute floor to request any loan
 REPAYMENT_FREQUENCY_DAYS = 30  # monthly installments
+
+
+def get_collateral_ratio(trust_score: float) -> float | None:
+    """Return collateral ratio (e.g. 1.20 for 120%) based on trust score.
+    Returns None if the user is not eligible (score < 450)."""
+    if trust_score < 450:
+        return None
+    if trust_score < 600:
+        return 1.20
+    if trust_score < 750:
+        return 0.80
+    if trust_score < 850:
+        return 0.60
+    if trust_score < 950:
+        return 0.40
+    return 0.20   # 950 – 1000
+
+
+def get_interest_rate_bps(trust_score: float) -> int | None:
+    """Annual interest rate in basis points based on trust score.
+    Returns None if the user is not eligible."""
+    if trust_score < 450:
+        return None
+    if trust_score < 600:
+        return 2400   # 24 %  (high risk)
+    if trust_score < 750:
+        return 1200   # 12 %
+    if trust_score < 850:
+        return 800    #  8 %
+    if trust_score < 950:
+        return 500    #  5 %
+    return 300        #  3 %  (best tier)
+
+
+def get_max_loan(trust_score: float) -> float:
+    """Maximum borrow amount based on trust score."""
+    if trust_score < 450:
+        return 0.0
+    if trust_score < 600:
+        return 1_500.0
+    if trust_score < 750:
+        return 5_000.0
+    if trust_score < 850:
+        return 10_000.0
+    if trust_score < 950:
+        return 25_000.0
+    return 50_000.0   # 950 – 1000
 
 
 class LoanServiceError(Exception):
@@ -94,13 +123,16 @@ class LoanService:
             )
 
         tier = trust.risk_tier
-        if tier == RiskTier.CRITICAL:
-            raise LoanServiceError("Risk tier CRITICAL — loan requests are not permitted.")
+        score = trust.score
 
-        cap = MAX_LOAN_BY_TIER[tier]
+        coll_ratio = get_collateral_ratio(score)
+        if coll_ratio is None:
+            raise LoanServiceError("Trust score not eligible for a loan.")
+
+        cap = get_max_loan(score)
         if amount > cap:
             raise LoanServiceError(
-                f"Amount ${amount:,.2f} exceeds the ${cap:,.2f} limit for {tier.value} risk tier."
+                f"Amount ${amount:,.2f} exceeds the ${cap:,.2f} limit for your trust score ({score})."
             )
 
         active_count = await self._active_loan_count(borrower_id)
@@ -119,7 +151,7 @@ class LoanService:
         )
         self._s.add(req)
         await self._s.flush()
-        logger.info("Loan request created: %s  amount=%s tier=%s", req.id, amount, tier.value)
+        logger.info("Loan request created: %s  amount=%s score=%s", req.id, amount, score)
         return req
 
     # ═══════════════════════════════════════════════════════════════
@@ -166,9 +198,9 @@ class LoanService:
 
         lender = await self._get_user(lender_id)
 
-        tier = req.risk_tier_at_request or RiskTier.HIGH
-        rate_bps = INTEREST_RATE_BPS[tier]
-        coll_ratio = COLLATERAL_RATIO[tier]
+        score = req.trust_score_at_request or 0
+        rate_bps = get_interest_rate_bps(score) or 2400  # fallback to high rate
+        coll_ratio = get_collateral_ratio(score) or 1.20  # fallback to high collateral
         coll_amount = round(float(req.amount_requested) * coll_ratio, 8) if coll_ratio > 0 else None
 
         # Lock collateral on-chain (mock)

@@ -29,6 +29,8 @@ async def login(body: LoginRequest, session: AsyncSession = Depends(get_session)
 @router.post("/wallet-login", response_model=TokenResponse)
 async def wallet_login(body: WalletLoginRequest, session: AsyncSession = Depends(get_session)):
     try:
-        return await AuthService(session).wallet_login(body.wallet_address, body.signature)
+        return await AuthService(session).wallet_login(
+            body.wallet_address, body.signature, body.message
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))

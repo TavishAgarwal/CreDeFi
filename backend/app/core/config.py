@@ -23,5 +23,19 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
+    # Blockchain
+    RPC_URL: str = "http://127.0.0.1:8545"
+    CHAIN_PRIVATE_KEY: str = ""  # deployer/backend signer — set via .env
+    LOAN_CONTRACT_ADDRESS: str = ""
+    VAULT_CONTRACT_ADDRESS: str = ""
+    NFT_CONTRACT_ADDRESS: str = ""
+    RATE_MODEL_ADDRESS: str = ""
+    USDC_ADDRESS: str = ""
+    WETH_ADDRESS: str = ""
+
+    # GitHub OAuth
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+
 
 settings = Settings()
