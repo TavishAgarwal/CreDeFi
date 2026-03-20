@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { api } from "@/lib/api-client";
-import { TOKEN_STORAGE_KEY } from "@/lib/constants";
 import type { User } from "@/types";
 
 interface AuthState {
@@ -9,19 +8,19 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
 
-  /** Email/password login — stores JWT and fetches user profile. */
+  /** Email/password login — backend sets httpOnly cookie. */
   login: (email: string, password: string) => Promise<void>;
 
   /** Register a new account. Does NOT auto-login. */
   register: (email: string, password: string, displayName?: string) => Promise<void>;
 
-  /** Wallet-based login — backend verifies the signed message. */
-  walletLogin: (walletAddress: string, signature: string, message: string) => Promise<void>;
+  /** Wallet-based login — backend verifies the signed message and sets cookie. */
+  walletLogin: (walletAddress: string, signature: string, message: string, nonce: string) => Promise<void>;
 
-  /** Load the current user from a stored JWT (called on app boot). */
+  /** Load the current user from the httpOnly cookie (called on app boot). */
   hydrate: () => Promise<void>;
 
-  /** Clear auth state and remove stored token. */
+  /** Clear auth state and call backend logout to clear cookie. */
   logout: () => void;
 
   /** Reset transient error state. */
@@ -37,8 +36,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (email, password) => {
     set({ isLoading: true, error: null });
     try {
-      const tokens = await api.auth.login(email, password);
-      localStorage.setItem(TOKEN_STORAGE_KEY, tokens.access_token);
+      // H1: Backend sets the httpOnly cookie — no token to store client-side
+      await api.auth.login(email, password);
       const user = await api.auth.me();
       set({ user, isAuthenticated: true, isLoading: false });
     } catch (err: unknown) {
@@ -60,15 +59,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  walletLogin: async (walletAddress, signature, message) => {
+  walletLogin: async (walletAddress, signature, message, nonce) => {
     set({ isLoading: true, error: null });
     try {
-      const tokens = await api.auth.walletLogin({
+      // H1: Backend sets the httpOnly cookie — no token to store client-side
+      await api.auth.walletLogin({
         wallet_address: walletAddress,
         signature,
         message,
+        nonce,
       });
-      localStorage.setItem(TOKEN_STORAGE_KEY, tokens.access_token);
       const user = await api.auth.me();
       set({ user, isAuthenticated: true, isLoading: false });
     } catch (err: unknown) {
@@ -80,21 +80,22 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   hydrate: async () => {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (!token) return;
-
+    // H1: No localStorage check needed — cookie is sent automatically
     set({ isLoading: true });
     try {
       const user = await api.auth.me();
       set({ user, isAuthenticated: true, isLoading: false });
     } catch {
-      localStorage.removeItem(TOKEN_STORAGE_KEY);
+      // Cookie expired or invalid — that's fine, user is just not logged in
       set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },
 
   logout: () => {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    // H1: Call backend to clear the httpOnly cookie
+    api.auth.logout().catch(() => {
+      /* best-effort — clear local state regardless */
+    });
     set({ user: null, isAuthenticated: false, error: null });
   },
 

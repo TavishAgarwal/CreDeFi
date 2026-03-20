@@ -160,6 +160,41 @@ export interface Transaction {
   created_at: string;
 }
 
+// ── Dashboard ────────────────────────────────────────────────────
+
+export interface IdentityLink {
+  provider: string;
+  identifier: string;
+  is_verified: boolean;
+  confidence_weight: number;
+  verified_at: string | null;
+}
+
+export interface IdentityProfile {
+  user_id: string;
+  confidence_score: number;
+  total_links: number;
+  verified_count: number;
+  links: IdentityLink[];
+}
+
+export interface RepaymentBehavior {
+  total_loans: number;
+  loans_repaid: number;
+  loans_defaulted: number;
+  loans_active: number;
+  total_borrowed: number;
+  total_repaid: number;
+  reliability_score: number;
+}
+
+export interface DashboardStats {
+  monthly_income: number;
+  active_loan_amount: number;
+  total_repaid: number;
+  collateral_ratio: number;
+}
+
 // ── API ──────────────────────────────────────────────────────────
 
 export interface ApiError {

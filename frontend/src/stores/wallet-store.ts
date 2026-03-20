@@ -7,6 +7,7 @@ import {
   signMessage,
   buildSignInMessage,
 } from "@/lib/wallet";
+import { api } from "@/lib/api-client";
 import type { ConnectionStatus } from "@/types";
 
 interface WalletState {
@@ -31,7 +32,7 @@ interface WalletState {
   disableDemo: () => void;
 
   /** Sign the standard CreDeFi login message. Returns { signature, message }. */
-  signLoginMessage: () => Promise<{ signature: string; message: string }>;
+  signLoginMessage: () => Promise<{ signature: string; message: string; nonce: string }>;
 
   /** Update address from MetaMask accountsChanged event. */
   handleAccountsChanged: (accounts: string[]) => void;
@@ -119,11 +120,12 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       throw new Error("Wallet not connected");
     }
 
-    const nonce = crypto.randomUUID();
+    // C5: Request a server-side nonce (single-use, 5-min TTL)
+    const { nonce } = await api.auth.walletNonce(address);
     const message = buildSignInMessage(address, nonce);
     const signature = await signMessage(signer, message);
 
-    return { signature, message };
+    return { signature, message, nonce };
   },
 
   handleAccountsChanged: (accounts) => {

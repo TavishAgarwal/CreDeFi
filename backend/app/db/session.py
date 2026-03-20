@@ -6,7 +6,7 @@ from app.core.config import settings
 
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.DEBUG,
+    echo=False,  # M2: Never echo SQL queries — they may contain sensitive data
     pool_size=20,
     max_overflow=10,
     pool_pre_ping=True,

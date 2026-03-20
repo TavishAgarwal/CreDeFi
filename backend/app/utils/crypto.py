@@ -1,12 +1,10 @@
 """
 Token encryption for storing OAuth tokens securely at rest.
 Uses Fernet symmetric encryption from the cryptography library.
-Falls back to base64 encoding if no key is configured (dev only).
+Raises RuntimeError if no encryption key is configured — no silent fallback.
 """
 
 from __future__ import annotations
-
-import base64
 
 from app.core.config import settings
 
@@ -19,25 +17,39 @@ def _get_fernet():
         return _fernet
 
     key = settings.TOKEN_ENCRYPTION_KEY
-    if not key:
+    if not key or len(key) < 32:
         return None
 
     from cryptography.fernet import Fernet
-    if len(key) < 32:
-        key = base64.urlsafe_b64encode(key.ljust(32, "0")[:32].encode()).decode()
-    _fernet = Fernet(key.encode() if isinstance(key, str) else key)
+
+    # Require a proper base64-encoded Fernet key (44 chars).
+    # If the provided key is not a valid Fernet key, wrap it.
+    if len(key) == 44:
+        _fernet = Fernet(key.encode() if isinstance(key, str) else key)
+    else:
+        import base64
+        derived = base64.urlsafe_b64encode(key[:32].encode())
+        _fernet = Fernet(derived)
     return _fernet
 
 
 def encrypt_token(plaintext: str) -> str:
+    """Encrypt a token string. Raises if no encryption key is configured."""
     f = _get_fernet()
     if f is None:
-        return base64.b64encode(plaintext.encode()).decode()
+        raise RuntimeError(
+            "TOKEN_ENCRYPTION_KEY is required for token encryption. "
+            "Generate one with: python -c "
+            "\"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
     return f.encrypt(plaintext.encode()).decode()
 
 
 def decrypt_token(ciphertext: str) -> str:
+    """Decrypt a token string. Raises if no encryption key is configured."""
     f = _get_fernet()
     if f is None:
-        return base64.b64decode(ciphertext.encode()).decode()
+        raise RuntimeError(
+            "TOKEN_ENCRYPTION_KEY is required for token decryption."
+        )
     return f.decrypt(ciphertext.encode()).decode()

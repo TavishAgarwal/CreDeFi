@@ -128,4 +128,44 @@ describe("SoulboundReputationNFT", function () {
       expect(await nft.supportsInterface("0x7965db0b")).to.be.true;
     });
   });
+
+  describe("Score Explainability", function () {
+    it("mintReputationExplained emits ScoreExplained event", async function () {
+      await expect(
+        nft.connect(updater).mintReputationExplained(
+          userA.address, 750, "GOOD", 600, 150, 0, "heuristic=60%,ml=15%,penalties=0"
+        )
+      )
+        .to.emit(nft, "ScoreExplained")
+        .withArgs(userA.address, 750, 600, 150, 0, "heuristic=60%,ml=15%,penalties=0");
+
+      const [score, , tier] = await nft.reputationOf(userA.address);
+      expect(score).to.equal(750n);
+      expect(tier).to.equal("GOOD");
+    });
+
+    it("updateScoreExplained emits ScoreExplained event", async function () {
+      await nft.connect(updater).mintReputation(userA.address, 500, "FAIR");
+
+      await expect(
+        nft.connect(updater).updateScoreExplained(
+          userA.address, 850, "EXCELLENT", 700, 200, 50, "heuristic=70%,ml=20%,penalties=-50"
+        )
+      )
+        .to.emit(nft, "ScoreExplained")
+        .withArgs(userA.address, 850, 700, 200, 50, "heuristic=70%,ml=20%,penalties=-50");
+
+      const [score, , tier] = await nft.reputationOf(userA.address);
+      expect(score).to.equal(850n);
+      expect(tier).to.equal("EXCELLENT");
+    });
+
+    it("mintReputationExplained also emits ReputationMinted and ScoreUpdated", async function () {
+      const tx = nft.connect(updater).mintReputationExplained(
+        userB.address, 600, "GOOD", 400, 200, 0, "test"
+      );
+      await expect(tx).to.emit(nft, "ReputationMinted").withArgs(userB.address, 1);
+      await expect(tx).to.emit(nft, "ScoreUpdated").withArgs(userB.address, 1, 600, "GOOD");
+    });
+  });
 });

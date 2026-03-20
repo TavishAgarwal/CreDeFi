@@ -354,6 +354,16 @@ class LoanService:
         return list((await self._s.scalars(q)).all())
 
     # ═══════════════════════════════════════════════════════════════
+    # Public wrappers for query helpers (H8: avoid exposing private methods)
+    # ═══════════════════════════════════════════════════════════════
+
+    async def remaining_installments(self, contract_id: uuid.UUID) -> int:
+        return await self._remaining_installments(contract_id)
+
+    async def latest_trust_score(self, uid: uuid.UUID) -> TrustScore | None:
+        return await self._latest_trust_score(uid)
+
+    # ═══════════════════════════════════════════════════════════════
     # Private helpers
     # ═══════════════════════════════════════════════════════════════
 

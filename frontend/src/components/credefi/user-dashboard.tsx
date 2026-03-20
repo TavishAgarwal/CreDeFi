@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import {
   TrendingUp,
@@ -17,6 +17,7 @@ import {
   AlertCircle,
   RefreshCw,
   Eye,
+  Search,
 } from "lucide-react"
 import {
   AreaChart,
@@ -33,7 +34,7 @@ import {
 import { api } from "@/lib/api-client"
 import { useWalletStore } from "@/stores/wallet-store"
 import { useDemoStore } from "@/stores/demo-store"
-import type { TrustScoreResult, SybilAnalysis, GraphMetrics } from "@/types"
+import type { TrustScoreResult, SybilAnalysis, GraphMetrics, IdentityProfile, RepaymentBehavior, LoanEligibility } from "@/types"
 import { toast } from "sonner"
 import { ScoreSimulator } from "@/components/credefi/score-simulator"
 import { CreditPassportCard } from "@/components/credefi/credit-passport"
@@ -47,6 +48,12 @@ const FALLBACK_INCOME = [
   { month: "Mar", income: 4900 },
 ]
 
+const FALLBACK_TX_HISTORY = [
+  { id: "0x3f4a…9b2c", type: "Loan Repayment", amount: "-$420", date: "Mar 18, 2026", status: "Confirmed" },
+  { id: "0x7c1e…4d8f", type: "Loan Disbursed", amount: "+$2,500", date: "Feb 28, 2026", status: "Confirmed" },
+  { id: "0x9b2a…1c5d", type: "Collateral Deposit", amount: "-$800", date: "Feb 28, 2026", status: "Confirmed" },
+  { id: "0x1f8b…3e7a", type: "Interest Payment", amount: "-$37.50", date: "Mar 1, 2026", status: "Confirmed" },
+]
 function TrustScoreCard({
   score,
   tier,
@@ -147,11 +154,26 @@ export function UserDashboard() {
   const [sybilData, setSybilData] = useState<SybilAnalysis | null>(null)
   const [graphData, setGraphData] = useState<GraphMetrics | null>(null)
   const [loading, setLoading] = useState(false)
-  const [incomeData] = useState(FALLBACK_INCOME)
+  const [incomeData, setIncomeData] = useState(FALLBACK_INCOME)
+  const [behavior, setBehavior] = useState<RepaymentBehavior | null>(null)
+  const [eligibility, setEligibility] = useState<LoanEligibility | null>(null)
+  const [identity, setIdentity] = useState<IdentityProfile | null>(null)
+  const [txHistory, setTxHistory] = useState(FALLBACK_TX_HISTORY)
+  const [ghUsername, setGhUsername] = useState("")
+  const [ghProfile, setGhProfile] = useState<{ login: string; public_repos: number; total_stars: number; account_age_days: number; original_repos: number } | null>(null)
+  const [ghLoading, setGhLoading] = useState(false)
 
   const score = trustScore?.score ?? 782
   const tier = trustScore?.risk_tier ?? "EXCELLENT"
   const loanLimit = trustScore?.loan_limit ?? 7500
+
+  const activeLoanAmount = eligibility?.trust_score
+    ? `$${(behavior?.total_borrowed ?? 0 - (behavior?.total_repaid ?? 0)).toLocaleString()}`
+    : "$2,500"
+  const totalRepaid = behavior ? `$${behavior.total_repaid.toLocaleString()}` : "$6,420"
+  const collateralRatio = eligibility?.collateral_ratio
+    ? `${Math.round(eligibility.collateral_ratio * 100)}%`
+    : "42%"
 
   const radarData = graphData
     ? [
@@ -169,31 +191,41 @@ export function UserDashboard() {
         { subject: "On-chain", score: 81 },
       ]
 
-  const txHistory = [
-    { id: "0x3f4a…9b2c", type: "Loan Repayment", amount: "-$420", date: "Mar 18, 2026", status: "Confirmed" },
-    { id: "0x7c1e…4d8f", type: "Loan Disbursed", amount: "+$2,500", date: "Feb 28, 2026", status: "Confirmed" },
-    { id: "0x9b2a…1c5d", type: "Collateral Deposit", amount: "-$800", date: "Feb 28, 2026", status: "Confirmed" },
-    { id: "0x1f8b…3e7a", type: "Interest Payment", amount: "-$37.50", date: "Mar 1, 2026", status: "Confirmed" },
-  ]
+  const platforms = identity
+    ? identity.links.map(link => ({
+        name: link.provider.charAt(0).toUpperCase() + link.provider.slice(1),
+        icon: link.provider === "github" ? GitBranch
+            : link.provider === "stripe" ? CreditCard
+            : link.provider === "wallet" || link.provider === "metamask" ? Wallet
+            : Activity,
+        connected: link.is_verified,
+        metric: link.identifier,
+        color: link.provider === "github" ? "text-sky-400"
+             : link.provider === "stripe" ? "text-violet-400"
+             : link.provider === "wallet" || link.provider === "metamask" ? "text-primary"
+             : "text-emerald-400",
+      }))
+    : [
+        { name: "GitHub", icon: GitBranch, connected: true, metric: "847 commits", color: "text-sky-400" },
+        { name: "Upwork", icon: Activity, connected: true, metric: "$14,200 earned", color: "text-emerald-400" },
+        { name: "Stripe", icon: CreditCard, connected: true, metric: "98% success rate", color: "text-violet-400" },
+        { name: "Wallet", icon: Wallet, connected: true, metric: address ? `${address.slice(0, 6)}...` : "2.3 ETH balance", color: "text-primary" },
+      ]
 
-  const platforms = [
-    { name: "GitHub", icon: GitBranch, connected: true, metric: "847 commits", color: "text-sky-400" },
-    { name: "Upwork", icon: Activity, connected: true, metric: "$14,200 earned", color: "text-emerald-400" },
-    { name: "Stripe", icon: CreditCard, connected: true, metric: "98% success rate", color: "text-violet-400" },
-    { name: "Wallet", icon: Wallet, connected: true, metric: address ? `${address.slice(0, 6)}...` : "2.3 ETH balance", color: "text-primary" },
-  ]
-
-  async function handleCalculate() {
+  const handleCalculate = useCallback(async () => {
     if (isDemo) {
       toast.info("Demo mode — showing sample data")
       return
     }
     setLoading(true)
     try {
-      const [scoreResult, sybilResult, graphResult] = await Promise.allSettled([
+      const [scoreResult, sybilResult, graphResult, behaviorResult, eligibilityResult, identityResult] = await Promise.allSettled([
         api.trustScore.calculate(),
         api.sybil.analyze(),
         api.graph.compute(),
+        api.risk.myBehavior() as Promise<RepaymentBehavior>,
+        api.loans.eligibility(),
+        api.risk.myIdentity() as Promise<IdentityProfile>,
       ])
       if (scoreResult.status === "fulfilled") {
         setTrustScore(scoreResult.value)
@@ -201,13 +233,17 @@ export function UserDashboard() {
       }
       if (sybilResult.status === "fulfilled") setSybilData(sybilResult.value)
       if (graphResult.status === "fulfilled") setGraphData(graphResult.value)
+      if (behaviorResult.status === "fulfilled") setBehavior(behaviorResult.value as RepaymentBehavior)
+      if (eligibilityResult.status === "fulfilled") setEligibility(eligibilityResult.value)
+      if (identityResult.status === "fulfilled") setIdentity(identityResult.value as IdentityProfile)
     } catch {
       toast.error("Failed to calculate scores")
     } finally {
       setLoading(false)
     }
-  }
+  }, [isDemo])
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     handleCalculate()
   }, [])
@@ -268,10 +304,10 @@ export function UserDashboard() {
       {/* Stats row */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Monthly Income", value: "$4,900", change: "+5.8%", up: true, icon: DollarSign },
-          { label: "Active Loans", value: "$2,500", change: "1 active", up: true, icon: CreditCard },
-          { label: "Total Repaid", value: "$6,420", change: "On time", up: true, icon: ShieldCheck },
-          { label: "Collateral Ratio", value: "42%", change: "-8% from avg", up: false, icon: Activity },
+          { label: "Monthly Income", value: behavior ? `$${Math.round(behavior.total_borrowed / Math.max(behavior.total_loans, 1)).toLocaleString()}` : "$4,900", change: "+5.8%", up: true, icon: DollarSign },
+          { label: "Active Loans", value: activeLoanAmount, change: behavior ? `${behavior.loans_active} active` : "1 active", up: true, icon: CreditCard },
+          { label: "Total Repaid", value: totalRepaid, change: behavior && behavior.reliability_score > 0.8 ? "On time" : "—", up: true, icon: ShieldCheck },
+          { label: "Collateral Ratio", value: collateralRatio, change: eligibility?.collateral_ratio ? `${eligibility.collateral_ratio < 0.5 ? "-" : "+"}${Math.abs(Math.round((eligibility.collateral_ratio - 0.5) * 100))}% from avg` : "-8% from avg", up: eligibility ? eligibility.collateral_ratio <= 0.5 : false, icon: Activity },
         ].map(({ label, value, change, up, icon: Icon }) => (
           <div key={label} className="glass-card rounded-2xl p-5 flex items-center gap-4">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -344,6 +380,60 @@ export function UserDashboard() {
                 <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-400" : "bg-muted-foreground"}`} />
               </div>
             ))}
+          </div>
+
+          {/* GitHub username lookup */}
+          <div className="mt-4 p-3 rounded-xl bg-secondary">
+            <p className="text-xs text-muted-foreground mb-2">Look up a GitHub profile</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={ghUsername}
+                onChange={(e) => setGhUsername(e.target.value)}
+                placeholder="e.g. torvalds"
+                className="flex-1 text-sm px-3 py-1.5 rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && ghUsername.trim()) {
+                    setGhLoading(true)
+                    api.github.publicProfile(ghUsername.trim())
+                      .then((data) => { setGhProfile(data); toast.success(`Loaded @${data.login}`) })
+                      .catch(() => toast.error("GitHub user not found"))
+                      .finally(() => setGhLoading(false))
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (!ghUsername.trim()) return
+                  setGhLoading(true)
+                  api.github.publicProfile(ghUsername.trim())
+                    .then((data) => { setGhProfile(data); toast.success(`Loaded @${data.login}`) })
+                    .catch(() => toast.error("GitHub user not found"))
+                    .finally(() => setGhLoading(false))
+                }}
+                disabled={ghLoading || !ghUsername.trim()}
+                className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-1"
+              >
+                {ghLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                Look up
+              </button>
+            </div>
+            {ghProfile && (
+              <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                <div className="p-1.5 rounded-lg bg-background">
+                  <p className="text-xs text-muted-foreground">Repos</p>
+                  <p className="text-sm font-bold text-foreground">{ghProfile.public_repos}</p>
+                </div>
+                <div className="p-1.5 rounded-lg bg-background">
+                  <p className="text-xs text-muted-foreground">Stars</p>
+                  <p className="text-sm font-bold text-foreground">{ghProfile.total_stars}</p>
+                </div>
+                <div className="p-1.5 rounded-lg bg-background">
+                  <p className="text-xs text-muted-foreground">Age</p>
+                  <p className="text-sm font-bold text-foreground">{Math.round(ghProfile.account_age_days / 365)}y</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

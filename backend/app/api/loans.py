@@ -114,7 +114,7 @@ async def repay_loan(
     except LoanServiceError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
-    remaining = await svc._remaining_installments(body.contract_id)
+    remaining = await svc.remaining_installments(body.contract_id)
     return RepayLoanResponse(
         repayment=RepaymentResponse.model_validate(repayment),
         loan_fully_repaid=(remaining == 0),
@@ -148,7 +148,7 @@ async def loan_eligibility(
     """Return the caller’s dynamic collateral ratio, max borrow amount,
     and interest rate based on their latest trust score."""
     svc = LoanService(session)
-    trust = await svc._latest_trust_score(user.id)
+    trust = await svc.latest_trust_score(user.id)
 
     if trust is None:
         return LoanEligibilityResponse(

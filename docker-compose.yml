@@ -1,0 +1,102 @@
+# CreDeFi — Full Stack Docker Compose
+# Usage: docker compose up --build
+# Access: http://localhost:3000 (frontend) | http://localhost:8000 (API)
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: credefi
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Hardhat Node ────────────────────────────────────────────────
+  hardhat:
+    image: node:20-alpine
+    working_dir: /contracts
+    volumes:
+      - ./contracts:/contracts
+    command: sh -c "npm install && npx hardhat node --hostname 0.0.0.0"
+    ports:
+      - "8545:8545"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8545 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Contract Deployment ─────────────────────────────────────────
+  deploy:
+    image: node:20-alpine
+    working_dir: /contracts
+    volumes:
+      - ./contracts:/contracts
+    depends_on:
+      hardhat:
+        condition: service_healthy
+    command: sh -c "npm install && npx hardhat run scripts/deploy.js --network docker"
+    environment:
+      HARDHAT_NETWORK: docker
+
+  # ── Backend API ─────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      deploy:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/credefi
+      JWT_SECRET_KEY: docker-compose-dev-secret-key-change-in-production-1234567890
+      RPC_URL: http://hardhat:8545
+      CHAIN_PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+      CORS_ORIGINS: '["http://localhost:3000"]'
+      DEBUG: "true"
+    volumes:
+      - ./contracts/deployed_addresses.json:/app/deployed_addresses.json:ro
+    command: >
+      sh -c "
+        if [ -f /app/deployed_addresses.json ]; then
+          echo 'Loading contract addresses from deployed_addresses.json...'
+          export LOAN_CONTRACT_ADDRESS=$$(python3 -c \"import json; print(json.load(open('/app/deployed_addresses.json'))['LoanContract'])\")
+          export VAULT_CONTRACT_ADDRESS=$$(python3 -c \"import json; print(json.load(open('/app/deployed_addresses.json'))['CollateralVault'])\")
+          export NFT_CONTRACT_ADDRESS=$$(python3 -c \"import json; print(json.load(open('/app/deployed_addresses.json'))['SoulboundReputationNFT'])\")
+          export RATE_MODEL_ADDRESS=$$(python3 -c \"import json; print(json.load(open('/app/deployed_addresses.json'))['InterestRateModel'])\")
+          export USDC_ADDRESS=$$(python3 -c \"import json; print(json.load(open('/app/deployed_addresses.json'))['MockUSDC'])\")
+          export WETH_ADDRESS=$$(python3 -c \"import json; print(json.load(open('/app/deployed_addresses.json'))['MockWETH'])\")
+        fi
+        uvicorn main:app --host 0.0.0.0 --port 8000
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health/chain\")'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Frontend ────────────────────────────────────────────────────
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_CHAIN_ID: "31337"
+
+volumes:
+  pgdata:

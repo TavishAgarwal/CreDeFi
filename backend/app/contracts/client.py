@@ -150,6 +150,60 @@ class ContractClient:
         except Exception:
             return False
 
+    def get_collateral_balance(
+        self, user_address: str, token_address: str
+    ) -> dict[str, int] | None:
+        """Read a user's collateral (deposited, locked) from the vault."""
+        if not self.is_connected:
+            return None
+        try:
+            addr = Web3.to_checksum_address(user_address)
+            token = Web3.to_checksum_address(token_address)
+            deposited, locked = self.vault_contract.functions.collateral(addr, token).call()
+            return {"deposited": deposited, "locked": locked}
+        except Exception as exc:
+            logger.debug("get_collateral_balance failed: %s", exc)
+            return None
+
+    def get_next_loan_id(self) -> int | None:
+        """Read the next loan ID counter from the LoanContract."""
+        if not self.is_connected:
+            return None
+        try:
+            return self.loan_contract.functions.nextLoanId().call()
+        except Exception:
+            return None
+
+    def get_reputation(self, address: str) -> dict[str, Any] | None:
+        """Read full reputation data for a user from the SoulboundReputationNFT."""
+        if not self.is_connected:
+            return None
+        try:
+            addr = Web3.to_checksum_address(address)
+            score, updated_at, risk_tier = self.nft_contract.functions.reputationOf(addr).call()
+            return {
+                "score": score,
+                "updated_at": updated_at,
+                "risk_tier": risk_tier,
+            }
+        except Exception as exc:
+            logger.debug("get_reputation failed for %s: %s", address, exc)
+            return None
+
+    def get_on_chain_rate(
+        self, total_supply: int, total_borrows: int, trust_score: int
+    ) -> int | None:
+        """Query the InterestRateModel for the computed rate."""
+        if not self.is_connected:
+            return None
+        try:
+            return self.rate_model.functions.computeRate(
+                total_supply, total_borrows, trust_score
+            ).call()
+        except Exception as exc:
+            logger.debug("get_on_chain_rate failed: %s", exc)
+            return None
+
     # ─── Write methods (use backend signer) ───────────────────────
 
     def _send_tx(self, fn) -> str:
@@ -190,6 +244,117 @@ class ContractClient:
             return "0xMOCK"
         addr = Web3.to_checksum_address(token_address)
         fn = self.loan_contract.functions.setPrice(addr, price_wei)
+        return self._send_tx(fn)
+
+    # ─── Collateral operations (vault) ────────────────────────────
+
+    def lock_collateral(
+        self, user_address: str, token_address: str, amount_wei: int
+    ) -> str:
+        """Lock collateral in the vault on behalf of a borrower."""
+        if not self.is_connected:
+            return "0xMOCK"
+        user = Web3.to_checksum_address(user_address)
+        token = Web3.to_checksum_address(token_address)
+        fn = self.vault_contract.functions.lock(user, token, amount_wei)
+        return self._send_tx(fn)
+
+    def unlock_collateral(
+        self, user_address: str, token_address: str, amount_wei: int
+    ) -> str:
+        """Unlock collateral in the vault (e.g. after full repayment)."""
+        if not self.is_connected:
+            return "0xMOCK"
+        user = Web3.to_checksum_address(user_address)
+        token = Web3.to_checksum_address(token_address)
+        fn = self.vault_contract.functions.unlock(user, token, amount_wei)
+        return self._send_tx(fn)
+
+    # ─── Loan lifecycle (LoanContract) ────────────────────────────
+
+    def create_loan(
+        self,
+        borrower: str,
+        borrow_token: str,
+        collateral_token: str,
+        principal_wei: int,
+        collateral_wei: int,
+        duration_seconds: int,
+    ) -> str:
+        """Create a new loan on-chain."""
+        if not self.is_connected:
+            return "0xMOCK"
+        fn = self.loan_contract.functions.createLoan(
+            Web3.to_checksum_address(borrower),
+            Web3.to_checksum_address(borrow_token),
+            Web3.to_checksum_address(collateral_token),
+            principal_wei,
+            collateral_wei,
+            duration_seconds,
+        )
+        return self._send_tx(fn)
+
+    def fund_loan(self, loan_id: int) -> str:
+        """Fund a pending loan (lender action)."""
+        if not self.is_connected:
+            return "0xMOCK"
+        fn = self.loan_contract.functions.fundLoan(loan_id)
+        return self._send_tx(fn)
+
+    def repay_loan(self, loan_id: int, amount_wei: int) -> str:
+        """Record a repayment on-chain."""
+        if not self.is_connected:
+            return "0xMOCK"
+        fn = self.loan_contract.functions.repay(loan_id, amount_wei)
+        return self._send_tx(fn)
+
+    def mark_default(self, loan_id: int) -> str:
+        """Mark a loan as defaulted on-chain."""
+        if not self.is_connected:
+            return "0xMOCK"
+        fn = self.loan_contract.functions.markDefault(loan_id)
+        return self._send_tx(fn)
+
+    # ─── Explainable reputation (SoulboundReputationNFT) ──────
+
+    def mint_reputation_explained(
+        self,
+        user_address: str,
+        score: int,
+        risk_tier: str,
+        heuristic_component: int,
+        ml_component: int,
+        penalties: int,
+        breakdown: str,
+    ) -> str:
+        """Mint a reputation NFT with full score breakdown logged on-chain."""
+        if not self.is_connected:
+            return "0xMOCK"
+        user = Web3.to_checksum_address(user_address)
+        fn = self.nft_contract.functions.mintReputationExplained(
+            user, score, risk_tier,
+            heuristic_component, ml_component, penalties, breakdown,
+        )
+        return self._send_tx(fn)
+
+    def update_score_explained(
+        self,
+        user_address: str,
+        new_score: int,
+        risk_tier: str,
+        heuristic_component: int,
+        ml_component: int,
+        penalties: int,
+        breakdown: str,
+    ) -> str:
+        """Update a reputation score with full breakdown logged on-chain."""
+        if not self.is_connected:
+            return "0xMOCK"
+        user = Web3.to_checksum_address(user_address)
+        fn = self.nft_contract.functions.updateScoreExplained(
+            user, new_score, risk_tier,
+            heuristic_component, ml_component, penalties, breakdown,
+        )
         return self._send_tx(fn)
 
     # ─── Wallet signature verification ────────────────────────────
