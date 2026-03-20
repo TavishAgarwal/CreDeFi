@@ -33,6 +33,14 @@ contract SoulboundReputationNFT is ERC721, AccessControl {
 
     event ScoreUpdated(address indexed user, uint256 indexed tokenId, uint256 score, string riskTier);
     event ReputationMinted(address indexed user, uint256 indexed tokenId);
+    event ScoreExplained(
+        address indexed user,
+        uint256 score,
+        uint256 heuristicComponent,
+        uint256 mlComponent,
+        uint256 penalties,
+        string  breakdown
+    );
 
     constructor() ERC721("CreDeFi Reputation", "CREP") {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -91,6 +99,36 @@ contract SoulboundReputationNFT is ERC721, AccessControl {
     }
 
     /**
+     * @notice Mint with full explainability — logs score breakdown on-chain.
+     */
+    function mintReputationExplained(
+        address user,
+        uint256 score,
+        string calldata riskTier,
+        uint256 heuristicComponent,
+        uint256 mlComponent,
+        uint256 penalties,
+        string calldata breakdown
+    ) external onlyRole(SCORE_UPDATER_ROLE) returns (uint256 tokenId) {
+        require(tokenOfOwner[user] == 0, "SBT: already minted");
+        require(score <= 1000, "SBT: score out of range");
+
+        tokenId = _nextTokenId++;
+        _safeMint(user, tokenId);
+
+        tokenOfOwner[user] = tokenId;
+        reputation[tokenId] = ReputationData({
+            score: score,
+            updatedAt: block.timestamp,
+            riskTier: riskTier
+        });
+
+        emit ReputationMinted(user, tokenId);
+        emit ScoreUpdated(user, tokenId, score, riskTier);
+        emit ScoreExplained(user, score, heuristicComponent, mlComponent, penalties, breakdown);
+    }
+
+    /**
      * @notice Update the trust score of an existing reputation token.
      */
     function updateScore(
@@ -108,6 +146,31 @@ contract SoulboundReputationNFT is ERC721, AccessControl {
         data.updatedAt = block.timestamp;
 
         emit ScoreUpdated(user, tokenId, newScore, newRiskTier);
+    }
+
+    /**
+     * @notice Update score with full explainability — logs breakdown on-chain.
+     */
+    function updateScoreExplained(
+        address user,
+        uint256 newScore,
+        string calldata newRiskTier,
+        uint256 heuristicComponent,
+        uint256 mlComponent,
+        uint256 penalties,
+        string calldata breakdown
+    ) external onlyRole(SCORE_UPDATER_ROLE) {
+        uint256 tokenId = tokenOfOwner[user];
+        require(tokenId != 0, "SBT: no token");
+        require(newScore <= 1000, "SBT: score out of range");
+
+        ReputationData storage data = reputation[tokenId];
+        data.score = newScore;
+        data.riskTier = newRiskTier;
+        data.updatedAt = block.timestamp;
+
+        emit ScoreUpdated(user, tokenId, newScore, newRiskTier);
+        emit ScoreExplained(user, newScore, heuristicComponent, mlComponent, penalties, breakdown);
     }
 
     /**

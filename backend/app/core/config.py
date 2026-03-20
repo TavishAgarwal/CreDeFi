@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,8 +16,8 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/credefi"
 
-    # JWT
-    JWT_SECRET_KEY: str = "change-me-in-production"
+    # JWT — no default; must be set via .env
+    JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
@@ -49,6 +50,20 @@ class Settings(BaseSettings):
 
     # Background sync interval (seconds)
     SYNC_INTERVAL_SECONDS: int = 3600
+
+    @model_validator(mode="after")
+    def _validate_security_settings(self) -> "Settings":
+        """Prevent startup with insecure default values."""
+        _INSECURE_JWT_VALUES = {
+            "", "change-me-in-production", "secret", "changeme",
+        }
+        if self.JWT_SECRET_KEY in _INSECURE_JWT_VALUES or len(self.JWT_SECRET_KEY) < 32:
+            raise ValueError(
+                "JWT_SECRET_KEY must be a strong, unique secret "
+                "(≥ 32 characters). Generate one with: "
+                "python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+            )
+        return self
 
 
 settings = Settings()

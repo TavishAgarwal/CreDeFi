@@ -21,29 +21,20 @@ class ApiClient {
     this.baseUrl = baseUrl;
   }
 
-  private getToken(): string | null {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(TOKEN_STORAGE_KEY);
-  }
-
   private async request<T>(
     path: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const token = this.getToken();
-
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(options.headers as Record<string, string>),
     };
 
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
     const res = await fetch(`${this.baseUrl}${path}`, {
       ...options,
       headers,
+      // H1: Include cookies on every request (httpOnly cookie auth)
+      credentials: "include",
     });
 
     if (!res.ok) {
@@ -82,203 +73,128 @@ class ApiClient {
       display_name?: string;
     }) => this.post<User>("/auth/register", data),
 
-    login: (email: string, password: string) => {
-      const form = new URLSearchParams();
-      form.append("username", email);
-      form.append("password", password);
-      return this.request<AuthTokens>("/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: form.toString(),
-      });
-    },
+    login: (email: string, password: string) =>
+      this.post<AuthTokens>("/auth/login", { email, password }),
 
     me: () => this.get<User>("/auth/me"),
 
-    walletLogin: (data: { wallet_address: string; signature: string; message: string }) =>
-      this.post<AuthTokens>("/auth/wallet-login", data),
+    walletNonce: (walletAddress: string) =>
+      this.get<{ nonce: string; wallet_address: string }>(
+        `/auth/wallet-nonce?wallet_address=${encodeURIComponent(walletAddress)}`
+      ),
+
+    walletLogin: (data: {
+      wallet_address: string;
+      signature: string;
+      message: string;
+      nonce: string;
+    }) => this.post<AuthTokens>("/auth/wallet-login", data),
+
+    logout: () => this.post<void>("/auth/logout"),
   };
 
   // ── Trust Score ──────────────────────────────────────────────
 
   trustScore = {
-    calculate: () =>
-      this.post<TrustScoreResult>("/trust-score/calculate"),
+    calculate: (userId?: string) =>
+      this.post<TrustScoreResult>("/trust-score/calculate", { user_id: userId }),
+    breakdown: () => this.get<TrustScoreResult>("/trust-score/breakdown"),
+    modelInfo: () => this.get("/trust-score/model-info"),
   };
 
-  // ── Sybil ────────────────────────────────────────────────────
+  // ── Sybil ───────────────────────────────────────────────────
 
   sybil = {
     analyze: () => this.post<SybilAnalysis>("/sybil/analyze"),
   };
 
-  // ── Graph ────────────────────────────────────────────────────
+  // ── Graph ───────────────────────────────────────────────────
 
   graph = {
     compute: () => this.post<GraphMetrics>("/graph/compute"),
+    recomputeAll: () => this.post<GraphMetrics>("/graph/recompute-all"),
   };
 
-  // ── Loans ────────────────────────────────────────────────────
+  // ── Loans ───────────────────────────────────────────────────
 
   loans = {
-    create: (data: {
-      amount: number;
-      currency: string;
-      duration_days: number;
-    }) => this.post<LoanRequest>("/loans/request", data),
-
-    marketplace: (params?: {
-      currency?: string;
-      min_amount?: number;
-      max_amount?: number;
-    }) => {
-      const qs = new URLSearchParams();
-      if (params?.currency) qs.set("currency", params.currency);
-      if (params?.min_amount) qs.set("min_amount", String(params.min_amount));
-      if (params?.max_amount) qs.set("max_amount", String(params.max_amount));
-      const query = qs.toString();
-      return this.get<LoanRequest[]>(
-        `/loans/marketplace${query ? `?${query}` : ""}`
-      );
-    },
-
+    create: (data: LoanRequest) =>
+      this.post<LoanContract>("/loans/create", data),
+    list: () => this.get<LoanContract[]>("/loans"),
+    get: (id: string) => this.get<LoanContract>(`/loans/${id}`),
+    repay: (contractId: string, amount: number) =>
+      this.post<Repayment>("/loans/repay", {
+        contract_id: contractId,
+        amount,
+      }),
+    eligibility: () => this.get<LoanEligibility>("/loans/eligibility"),
+    marketplace: () =>
+      this.get<LoanRequest[]>("/loans/marketplace"),
     fund: (data: { loan_request_id: string }) =>
       this.post<LoanContract>("/loans/fund", data),
-
-    repay: (data: { loan_contract_id: string; amount: number }) =>
-      this.post<Repayment>("/loans/repay", data),
-
-    history: () => this.get<LoanRequest[]>("/loans/history"),
-
-    eligibility: () => this.get<LoanEligibility>("/loans/eligibility"),
   };
 
-  // ── Health ───────────────────────────────────────────────────
+  // ── Risk ────────────────────────────────────────────────────
 
-  health = {
-    check: () => this.get<{ status: string }>("/health"),
+  risk = {
+    processDefault: (contractId: string) =>
+      this.post("/risk/process-default", { contract_id: contractId }),
+    myDefaults: () => this.get("/risk/defaults/me"),
+    myPenalties: () => this.get("/risk/penalties/me"),
+    myActivePenalties: () => this.get("/risk/penalties/me/active"),
+    linkIdentity: (data: {
+      provider: string;
+      identifier: string;
+      is_verified?: boolean;
+      verification_method?: string;
+    }) => this.post("/risk/identity/link", data),
+    myIdentity: () => this.get("/risk/identity/me"),
+    myIdentityConfidence: () => this.get("/risk/identity/me/confidence"),
+    vouch: (data: {
+      borrower_id: string;
+      contract_id: string;
+      stake_amount: number;
+      message?: string;
+    }) => this.post("/risk/guarantee/vouch", data),
+    myGuaranteesGiven: () => this.get("/risk/guarantee/me/given"),
+    myGuaranteesReceived: () => this.get("/risk/guarantee/me/received"),
+    myBehavior: () => this.get("/risk/behavior/me"),
   };
 
-  // ── Intelligence (Demo) ─────────────────────────────────────
+  // ── Data Sync ───────────────────────────────────────────────
 
-  intelligence = {
-    simulateScore: (data: {
-      income: number;
-      income_stability: number;
-      wallet_age: number;
-      platform_score: number;
-      repayment_history: number;
-      baseline_score?: number;
-    }) => this.post<SimulationResponse>("/simulate-score", data),
+  data = {
+    sync: () => this.post("/data/sync-user-data"),
+    connectGitHub: (code: string) =>
+      this.post("/data/connect/github", { code }),
+    myFeatures: () => this.get("/data/features/me"),
+  };
 
-    loanRecommend: (data: {
-      score: number;
-      income: number;
-      stability: number;
-    }) => this.post<LoanRecommendation>("/loan/recommend", data),
+  // ── GitHub ──────────────────────────────────────────────────
 
-    getUserGraph: (userId: string) =>
-      this.get<GraphVisualization>(`/graph/user/${userId}`),
-
-    getSuspiciousClusters: () =>
-      this.get<SuspiciousCluster[]>("/graph/suspicious-clusters"),
-
-    getDashboard: (params?: {
-      score?: number;
-      income?: number;
-      stability?: number;
-      wallet_age?: number;
-      platforms?: number;
-    }) => {
-      const qs = new URLSearchParams();
-      if (params?.score) qs.set("score", String(params.score));
-      if (params?.income) qs.set("income", String(params.income));
-      if (params?.stability) qs.set("stability", String(params.stability));
-      if (params?.wallet_age) qs.set("wallet_age", String(params.wallet_age));
-      if (params?.platforms) qs.set("platforms", String(params.platforms));
-      const query = qs.toString();
-      return this.get<DashboardData>(`/dashboard${query ? `?${query}` : ""}`);
-    },
+  github = {
+    connect: (redirectUri?: string) =>
+      this.get(
+        `/github/connect${redirectUri ? `?redirect_uri=${encodeURIComponent(redirectUri)}` : ""}`
+      ),
+    callback: (code: string, state: string) =>
+      this.post(`/github/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`),
+    profile: () => this.get("/github/profile"),
+    publicProfile: (username: string) =>
+      this.get<{
+        login: string;
+        name: string | null;
+        public_repos: number;
+        followers: number;
+        account_age_days: number;
+        total_stars: number;
+        original_repos: number;
+        top_languages: string[];
+        trust_signals: Record<string, boolean>;
+      }>(`/github/public-profile/${encodeURIComponent(username)}`),
   };
 }
+
+// ── Singleton ─────────────────────────────────────────────────
 
 export const api = new ApiClient(API_URL);
-
-// Intelligence types
-export interface SimulationResponse {
-  score: number;
-  risk_tier: string;
-  delta: number;
-  feature_impacts: FeatureImpact[];
-  loan_limit: number;
-  raw_weighted: number;
-}
-
-export interface FeatureImpact {
-  feature: string;
-  value: number;
-  weight: number;
-  contribution: number;
-  direction: string;
-}
-
-export interface LoanRecommendation {
-  recommended_amount: number;
-  recommended_interest: number;
-  risk_level: string;
-  reasoning: string;
-  collateral_ratio: number;
-  max_term_days: number;
-  monthly_payment: number;
-  confidence: string;
-}
-
-export interface GraphNode {
-  id: string;
-  label: string;
-  score: number;
-  risk: string;
-  is_suspicious: boolean;
-  cluster_id: number | null;
-}
-
-export interface GraphEdge {
-  source: string;
-  target: string;
-  weight: number;
-  edge_type: string;
-}
-
-export interface SuspiciousCluster {
-  cluster_id: number;
-  node_ids: string[];
-  reason: string;
-  severity: string;
-}
-
-export interface GraphVisualization {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  clusters: SuspiciousCluster[];
-  total_nodes: number;
-  total_edges: number;
-}
-
-export interface RiskAlert {
-  severity: string;
-  title: string;
-  message: string;
-  category: string;
-  action: string | null;
-}
-
-export interface DashboardData {
-  score: number;
-  risk_tier: string;
-  loan_limit: number;
-  alerts: RiskAlert[];
-  suggestions: { text: string; impact: string; category: string }[];
-  positive_factors: string[];
-  negative_factors: string[];
-  feature_breakdown: FeatureImpact[];
-}

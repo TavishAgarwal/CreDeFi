@@ -65,15 +65,16 @@ export function LoanRequestPage() {
     try {
       const currencyMap: Record<string, string> = { eth: "ETH", usdc: "USDC", wbtc: "WBTC" }
       await api.loans.create({
-        amount,
+        amount_requested: amount,
         currency: currencyMap[collateral] ?? "USDC",
-        duration_days: duration,
+        term_days: duration,
+        purpose: "DeFi loan via CreDeFi",
       })
       toast.success("Loan request created!")
       router.push("/contract")
     } catch {
-      toast.success("Loan request submitted!")
-      router.push("/contract")
+      toast.error("Failed to submit loan request. Please try again.")
+      setSubmitted(false)
     }
   }
 

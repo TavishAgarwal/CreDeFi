@@ -74,14 +74,14 @@ const FALLBACK_BORROWERS: BorrowerDisplay[] = [
   },
 ]
 
-const marketStats = [
+const FALLBACK_MARKET_STATS = [
   { label: "Total Deployed", value: "$4.8M", icon: DollarSign, up: true },
   { label: "Active Loans", value: "1,247", icon: Activity, up: true },
   { label: "Avg. APY Earned", value: "10.3%", icon: TrendingUp, up: true },
   { label: "Default Rate", value: "0.4%", icon: ShieldCheck, up: false },
 ]
 
-const yieldData = [
+const FALLBACK_YIELD = [
   { month: "Oct", yield: 8200 }, { month: "Nov", yield: 9400 }, { month: "Dec", yield: 8800 },
   { month: "Jan", yield: 11200 }, { month: "Feb", yield: 12800 }, { month: "Mar", yield: 13100 },
 ]
@@ -156,6 +156,25 @@ export function LenderDashboard() {
   }, [isDemo])
 
   const borrower = borrowers.find((b) => b.id === selected)
+
+  // Compute live stats from loaded borrowers
+  const totalDeployed = borrowers.reduce((sum, b) => {
+    const num = parseFloat(b.requested.replace(/[^0-9.]/g, ""))
+    return sum + (isNaN(num) ? 0 : num)
+  }, 0)
+  const avgRoi = borrowers.length > 0
+    ? (borrowers.reduce((sum, b) => sum + parseFloat(b.roi), 0) / borrowers.length).toFixed(1)
+    : "10.3"
+  const marketStats = borrowers !== FALLBACK_BORROWERS
+    ? [
+        { label: "Total Requested", value: `$${totalDeployed.toLocaleString()}`, icon: DollarSign, up: true },
+        { label: "Active Loans", value: String(borrowers.length), icon: Activity, up: true },
+        { label: "Avg. APY", value: `${avgRoi}%`, icon: TrendingUp, up: true },
+        { label: "Default Rate", value: "0.4%", icon: ShieldCheck, up: false },
+      ]
+    : FALLBACK_MARKET_STATS
+
+  const yieldData = FALLBACK_YIELD
 
   async function handleFund(id: string) {
     setFunding(id)

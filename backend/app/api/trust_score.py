@@ -4,8 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import get_current_user
 from app.db.session import get_session
 from app.ml.inference import get_feature_importance, get_model_info
+from app.models.user import User
 from app.schemas.trust_score import (
     FeatureBreakdownItem,
     MLComponentDetail,
@@ -22,11 +24,12 @@ router = APIRouter(prefix="/trust-score", tags=["trust-score"])
 
 @router.post("/calculate", response_model=TrustScoreCalculationResponse)
 async def calculate_trust_score(
-    body: TrustScoreRequest,
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    """C3/C4: Now requires authentication. Uses the caller's own user ID."""
     try:
-        result = await TrustScoreService(session).calculate_for_user(body.user_id)
+        result = await TrustScoreService(session).calculate_for_user(user.id)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
@@ -60,15 +63,16 @@ async def calculate_trust_score(
 
 @router.get("/breakdown", response_model=TrustScoreBreakdownResponse)
 async def get_trust_score_breakdown(
-    user_id: uuid.UUID,
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     """
+    C3/C4: Now requires authentication. Returns breakdown for the caller's own score.
     Full explainable breakdown of a user's trust score showing both
     the heuristic and ML contributions per feature.
     """
     try:
-        result = await TrustScoreService(session).calculate_for_user(user_id)
+        result = await TrustScoreService(session).calculate_for_user(user.id)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)

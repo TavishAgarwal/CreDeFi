@@ -14,5 +14,9 @@ module.exports = {
     hardhat: {
       chainId: 31337,
     },
+    docker: {
+      url: "http://hardhat:8545",
+      chainId: 31337,
+    },
   },
 };

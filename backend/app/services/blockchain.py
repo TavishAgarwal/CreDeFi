@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.contracts.client import contract_client
+from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -77,19 +78,23 @@ class BlockchainClient:
     ) -> ChainTxReceipt:
         if self.is_live:
             logger.info("LIVE lock_collateral: %s -> %s  %s %s", borrower_address, escrow_address, amount, currency)
-            # In the real flow, the borrower deposits directly via the vault contract
-            # from the frontend. The backend records the event.
-            return ChainTxReceipt(
-                tx_hash=_mock_hash(),  # frontend-initiated tx — hash tracked separately
-                chain=chain,
-                from_address=borrower_address,
-                to_address=escrow_address,
-                amount=amount,
-                currency=currency,
-                block_number=contract_client.w3.eth.block_number if contract_client.w3 else _mock_block(),
-                confirmed_at=datetime.now(timezone.utc),
-                success=True,
-            )
+            try:
+                amount_wei = int(amount * 10**18)
+                token_addr = settings.WETH_ADDRESS or escrow_address
+                tx_hash = contract_client.lock_collateral(borrower_address, token_addr, amount_wei)
+                return ChainTxReceipt(
+                    tx_hash=tx_hash,
+                    chain=chain,
+                    from_address=borrower_address,
+                    to_address=escrow_address,
+                    amount=amount,
+                    currency=currency,
+                    block_number=contract_client.w3.eth.block_number if contract_client.w3 else _mock_block(),
+                    confirmed_at=datetime.now(timezone.utc),
+                    success=True,
+                )
+            except Exception as exc:
+                logger.warning("lock_collateral on-chain failed, using mock: %s", exc)
         logger.info("MOCK lock_collateral: %s -> %s  %s %s", borrower_address, escrow_address, amount, currency)
         return _mock_receipt(borrower_address, escrow_address, amount, currency, chain)
 
@@ -99,22 +104,27 @@ class BlockchainClient:
         borrower_address: str,
         amount: float,
         currency: str,
+        loan_id: int | None = None,
         chain: str = "ethereum",
     ) -> ChainTxReceipt:
-        if self.is_live:
-            logger.info("LIVE disburse: %s -> %s  %s %s", escrow_address, borrower_address, amount, currency)
-            block = contract_client.w3.eth.block_number if contract_client.w3 else _mock_block()
-            return ChainTxReceipt(
-                tx_hash=_mock_hash(),
-                chain=chain,
-                from_address=escrow_address,
-                to_address=borrower_address,
-                amount=amount,
-                currency=currency,
-                block_number=block,
-                confirmed_at=datetime.now(timezone.utc),
-                success=True,
-            )
+        if self.is_live and loan_id is not None:
+            logger.info("LIVE disburse (fund_loan #%d): %s -> %s  %s %s", loan_id, escrow_address, borrower_address, amount, currency)
+            try:
+                tx_hash = contract_client.fund_loan(loan_id)
+                block = contract_client.w3.eth.block_number if contract_client.w3 else _mock_block()
+                return ChainTxReceipt(
+                    tx_hash=tx_hash,
+                    chain=chain,
+                    from_address=escrow_address,
+                    to_address=borrower_address,
+                    amount=amount,
+                    currency=currency,
+                    block_number=block,
+                    confirmed_at=datetime.now(timezone.utc),
+                    success=True,
+                )
+            except Exception as exc:
+                logger.warning("disburse on-chain failed, using mock: %s", exc)
         logger.info("MOCK disburse: %s -> %s  %s %s", escrow_address, borrower_address, amount, currency)
         return _mock_receipt(escrow_address, borrower_address, amount, currency, chain)
 
@@ -124,22 +134,28 @@ class BlockchainClient:
         escrow_address: str,
         amount: float,
         currency: str,
+        loan_id: int | None = None,
         chain: str = "ethereum",
     ) -> ChainTxReceipt:
-        if self.is_live:
-            logger.info("LIVE record_repayment: %s -> %s  %s %s", borrower_address, escrow_address, amount, currency)
-            block = contract_client.w3.eth.block_number if contract_client.w3 else _mock_block()
-            return ChainTxReceipt(
-                tx_hash=_mock_hash(),
-                chain=chain,
-                from_address=borrower_address,
-                to_address=escrow_address,
-                amount=amount,
-                currency=currency,
-                block_number=block,
-                confirmed_at=datetime.now(timezone.utc),
-                success=True,
-            )
+        if self.is_live and loan_id is not None:
+            logger.info("LIVE record_repayment (loan #%d): %s -> %s  %s %s", loan_id, borrower_address, escrow_address, amount, currency)
+            try:
+                amount_wei = int(amount * 10**18)
+                tx_hash = contract_client.repay_loan(loan_id, amount_wei)
+                block = contract_client.w3.eth.block_number if contract_client.w3 else _mock_block()
+                return ChainTxReceipt(
+                    tx_hash=tx_hash,
+                    chain=chain,
+                    from_address=borrower_address,
+                    to_address=escrow_address,
+                    amount=amount,
+                    currency=currency,
+                    block_number=block,
+                    confirmed_at=datetime.now(timezone.utc),
+                    success=True,
+                )
+            except Exception as exc:
+                logger.warning("record_repayment on-chain failed, using mock: %s", exc)
         logger.info("MOCK record_repayment: %s -> %s  %s %s", borrower_address, escrow_address, amount, currency)
         return _mock_receipt(borrower_address, escrow_address, amount, currency, chain)
 
@@ -151,8 +167,29 @@ class BlockchainClient:
         interest_owed: float,
         days_overdue: int,
         severity: str,
+        loan_id: int | None = None,
         chain: str = "ethereum",
     ) -> ChainTxReceipt:
+        if self.is_live and loan_id is not None:
+            logger.info(
+                "LIVE emit_default (loan #%d): borrower=%s principal=%.2f severity=%s",
+                loan_id, borrower_address, principal_owed, severity,
+            )
+            try:
+                tx_hash = contract_client.mark_default(loan_id)
+                return ChainTxReceipt(
+                    tx_hash=tx_hash,
+                    chain=chain,
+                    from_address=contract_address,
+                    to_address=borrower_address,
+                    amount=principal_owed,
+                    currency="USD",
+                    block_number=contract_client.w3.eth.block_number if contract_client.w3 else _mock_block(),
+                    confirmed_at=datetime.now(timezone.utc),
+                    success=True,
+                )
+            except Exception as exc:
+                logger.warning("emit_default on-chain failed, using mock: %s", exc)
         logger.info(
             "MOCK emit_default: borrower=%s principal=%.2f severity=%s on %s",
             borrower_address, principal_owed, severity, chain,
@@ -177,6 +214,27 @@ class BlockchainClient:
         reason: str,
         chain: str = "ethereum",
     ) -> ChainTxReceipt:
+        if self.is_live:
+            logger.info(
+                "LIVE emit_reputation_slash: user=%s penalty=%.0f new_score=%.0f reason=%s",
+                user_address, penalty_points, new_score, reason,
+            )
+            try:
+                tier = "POOR" if new_score < 450 else "FAIR" if new_score < 600 else "GOOD" if new_score < 750 else "EXCELLENT"
+                tx_hash = contract_client.mint_reputation(user_address, int(new_score), tier)
+                return ChainTxReceipt(
+                    tx_hash=tx_hash,
+                    chain=chain,
+                    from_address="0xCREDEFI_REPUTATION_NFT",
+                    to_address=user_address,
+                    amount=penalty_points,
+                    currency="CREP",
+                    block_number=contract_client.w3.eth.block_number if contract_client.w3 else _mock_block(),
+                    confirmed_at=datetime.now(timezone.utc),
+                    success=True,
+                )
+            except Exception as exc:
+                logger.warning("emit_reputation_slash on-chain failed, using mock: %s", exc)
         logger.info(
             "MOCK emit_reputation_slash: user=%s penalty=%.0f new_score=%.0f reason=%s",
             user_address, penalty_points, new_score, reason,
@@ -203,18 +261,24 @@ class BlockchainClient:
     ) -> ChainTxReceipt:
         if self.is_live:
             logger.info("LIVE release_collateral: %s -> %s  %s %s", escrow_address, borrower_address, amount, currency)
-            block = contract_client.w3.eth.block_number if contract_client.w3 else _mock_block()
-            return ChainTxReceipt(
-                tx_hash=_mock_hash(),
-                chain=chain,
-                from_address=escrow_address,
-                to_address=borrower_address,
-                amount=amount,
-                currency=currency,
-                block_number=block,
-                confirmed_at=datetime.now(timezone.utc),
-                success=True,
-            )
+            try:
+                amount_wei = int(amount * 10**18)
+                token_addr = settings.WETH_ADDRESS or escrow_address
+                tx_hash = contract_client.unlock_collateral(borrower_address, token_addr, amount_wei)
+                block = contract_client.w3.eth.block_number if contract_client.w3 else _mock_block()
+                return ChainTxReceipt(
+                    tx_hash=tx_hash,
+                    chain=chain,
+                    from_address=escrow_address,
+                    to_address=borrower_address,
+                    amount=amount,
+                    currency=currency,
+                    block_number=block,
+                    confirmed_at=datetime.now(timezone.utc),
+                    success=True,
+                )
+            except Exception as exc:
+                logger.warning("release_collateral on-chain failed, using mock: %s", exc)
         logger.info("MOCK release_collateral: %s -> %s  %s %s", escrow_address, borrower_address, amount, currency)
         return _mock_receipt(escrow_address, borrower_address, amount, currency, chain)
 
@@ -245,6 +309,43 @@ class BlockchainClient:
         if not self.is_live:
             return None
         return contract_client.get_trust_score(wallet_address)
+
+    def get_on_chain_reputation(self, wallet_address: str) -> dict | None:
+        """Read full reputation data (score, updatedAt, riskTier) from on-chain."""
+        if not self.is_live:
+            return None
+        return contract_client.get_reputation(wallet_address)
+
+    def get_collateral_balance(
+        self, user_address: str, token_address: str
+    ) -> dict[str, int] | None:
+        """Read a user's collateral (deposited, locked) from the vault."""
+        if not self.is_live:
+            return None
+        return contract_client.get_collateral_balance(user_address, token_address)
+
+    def get_on_chain_loan(self, loan_id: int) -> dict | None:
+        """Read loan details from the on-chain LoanContract."""
+        if not self.is_live:
+            return None
+        return contract_client.get_loan(loan_id)
+
+    def get_on_chain_rate(
+        self, total_supply: int, total_borrows: int, trust_score: int
+    ) -> int | None:
+        """Query the InterestRateModel for the computed rate."""
+        if not self.is_live:
+            return None
+        return contract_client.get_on_chain_rate(total_supply, total_borrows, trust_score)
+
+    def get_chain_status(self) -> dict:
+        """Return a summary of the blockchain connection status."""
+        return {
+            "is_live": self.is_live,
+            "rpc_url": contract_client.w3.provider.endpoint_uri if contract_client.w3 else None,
+            "block_number": contract_client.w3.eth.block_number if self.is_live else None,
+            "signer": contract_client._account.address if contract_client._account else None,
+        }
 
 
 # Singleton

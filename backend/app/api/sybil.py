@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import get_current_user
 from app.db.session import get_session
+from app.models.user import User
 from app.schemas.sybil import (
     ClusterDetail,
     DetectorDetail,
-    SybilAnalyzeRequest,
     SybilAnalyzeResponse,
 )
 from app.services.sybil_service import SybilService
@@ -15,11 +16,12 @@ router = APIRouter(prefix="/sybil", tags=["sybil"])
 
 @router.post("/analyze", response_model=SybilAnalyzeResponse)
 async def analyze_sybil(
-    body: SybilAnalyzeRequest,
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    """C3/C4: Now requires authentication. Analyzes the caller's own account."""
     try:
-        result = await SybilService(session).analyze_user(body.user_id)
+        result = await SybilService(session).analyze_user(user.id)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)

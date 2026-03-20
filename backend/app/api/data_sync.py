@@ -3,17 +3,18 @@ Data Sync API
 ==============
 POST /sync-user-data       — Full data sync + trust score recalculation
 POST /connect/github       — GitHub OAuth account connection
-GET  /features/{user_id}   — Retrieve extracted features for a user
+GET  /features/me          — Retrieve extracted features for the authenticated user
+
+C3/C4: All endpoints require authentication and use the caller's own user ID.
 """
 
 from __future__ import annotations
-
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
+from app.core.logging import get_logger
 from app.db.session import get_session
 from app.models.user import User
 from app.schemas.data_sync import (
@@ -28,6 +29,7 @@ from app.services.feature_extraction import FeatureExtractionPipeline
 from app.services.github_service import GitHubService
 
 router = APIRouter(prefix="/data", tags=["data-sync"])
+logger = get_logger(__name__)
 
 
 @router.post("/sync-user-data", response_model=SyncResponse)
@@ -74,10 +76,12 @@ async def connect_github(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
-    except Exception as e:
+    except Exception:
+        # H4: Don't leak internal error details to the client
+        logger.exception("GitHub OAuth connection failed for user=%s", user.id)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"GitHub OAuth failed: {e}",
+            detail="GitHub connection failed. Please try again.",
         )
 
     return GitHubConnectResponse(
@@ -86,12 +90,12 @@ async def connect_github(
     )
 
 
-@router.get("/features/{user_id}")
-async def get_features(
-    user_id: uuid.UUID,
+@router.get("/features/me")
+async def get_my_features(
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """Retrieve the extracted feature vector for a user (all 0→1 normalized)."""
+    """C3/C4: Retrieve the extracted feature vector for the authenticated user."""
     pipeline = FeatureExtractionPipeline(session)
-    features = await pipeline.extract_features(user_id)
+    features = await pipeline.extract_features(user.id)
     return features.to_dict()

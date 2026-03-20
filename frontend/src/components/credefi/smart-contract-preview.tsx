@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
   CheckCircle2,
@@ -11,11 +11,21 @@ import {
   X,
   Copy,
   ExternalLink,
+  Link2,
 } from "lucide-react"
 import { useWalletStore } from "@/stores/wallet-store"
 import { useDemoStore } from "@/stores/demo-store"
 import { api } from "@/lib/api-client"
+import { useContracts } from "@/contracts/hooks"
+import { CONTRACT_ADDRESSES } from "@/lib/constants"
 import { toast } from "sonner"
+import { formatEther } from "ethers"
+
+interface OnChainData {
+  trustScore: number | null
+  freeCollateral: string | null
+  connected: boolean
+}
 
 function ContractRow({ label, value, copy }: { label: string; value: string; copy?: boolean }) {
   const [copied, setCopied] = useState(false)
@@ -48,7 +58,42 @@ export function SmartContractPreview() {
   const router = useRouter()
   const { address } = useWalletStore()
   const { isDemo } = useDemoStore()
+  const { nft, vault } = useContracts()
   const [status, setStatus] = useState<"idle" | "confirming" | "confirmed">("idle")
+  const [onChain, setOnChain] = useState<OnChainData>({
+    trustScore: null,
+    freeCollateral: null,
+    connected: false,
+  })
+
+  // Read on-chain data when wallet is connected
+  const fetchOnChainData = useCallback(async () => {
+    if (!address || isDemo || !nft) return
+    try {
+      const score = await nft.trustScoreOf(address)
+      let freeCol: string | null = null
+      if (vault && CONTRACT_ADDRESSES.vault) {
+        // Query free collateral for WETH (or any configured token)
+        try {
+          const free = await vault.freeCollateral(address, CONTRACT_ADDRESSES.vault)
+          freeCol = formatEther(free)
+        } catch {
+          // Token not configured or no collateral
+        }
+      }
+      setOnChain({
+        trustScore: Number(score),
+        freeCollateral: freeCol,
+        connected: true,
+      })
+    } catch {
+      setOnChain(prev => ({ ...prev, connected: false }))
+    }
+  }, [address, isDemo, nft, vault])
+
+  useEffect(() => {
+    fetchOnChainData()
+  }, [fetchOnChainData])
 
   const contractDetails = {
     contractId: "0xCD4f…a2E8",
@@ -156,6 +201,45 @@ export function SmartContractPreview() {
             <ContractRow label="Network" value={contractDetails.network} />
             <ContractRow label="Estimated Gas" value={contractDetails.gasEstimate} />
           </div>
+
+          {/* On-Chain Status — reads real contract data */}
+          {!isDemo && (
+            <div className="glass-card rounded-2xl p-6 border border-primary/20">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-foreground flex items-center gap-2">
+                  <Link2 className="w-4 h-4 text-primary" />
+                  On-Chain Status
+                </h2>
+                <span className={`flex items-center gap-1.5 text-xs font-medium ${
+                  onChain.connected ? "text-emerald-400" : "text-muted-foreground"
+                }`}>
+                  <span className={`inline-block w-2 h-2 rounded-full ${
+                    onChain.connected ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground"
+                  }`} />
+                  {onChain.connected ? "Live" : "Offline"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between py-2 border-b border-border/50">
+                  <span className="text-sm text-muted-foreground">Reputation NFT Score</span>
+                  <span className="text-sm font-medium text-foreground">
+                    {onChain.trustScore !== null ? `${onChain.trustScore} / 1000` : "—"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-sm text-muted-foreground">Free Collateral</span>
+                  <span className="text-sm font-medium text-foreground">
+                    {onChain.freeCollateral !== null ? `${onChain.freeCollateral} ETH` : "—"}
+                  </span>
+                </div>
+              </div>
+              {!onChain.connected && (
+                <p className="text-xs text-muted-foreground mt-3">
+                  Connect to a Hardhat node to see live contract data.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="glass-card rounded-2xl p-5 font-mono text-xs text-emerald-400 leading-relaxed overflow-x-auto">
             <p className="text-muted-foreground mb-2">// CreDeFi Loan Contract · Solidity 0.8.24</p>
